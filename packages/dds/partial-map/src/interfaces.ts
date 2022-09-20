@@ -63,6 +63,7 @@ import { Tombstone } from "./common";
  */
 export interface IBeeTree<T = Serializable> {
     get(key: string): Promise<T | undefined>;
+    has(key: string): Promise<boolean>;
     batchUpdate(updates: Map<string, T | Tombstone>): Promise< Map<string, T | Tombstone>>;
 }
 
@@ -80,6 +81,7 @@ export interface IQueenBee {
  */
 export interface IHashbrown<T = Serializable> {
     get(key: string): T | Tombstone | undefined;
+    has(key: string): boolean;
     set(key: string, value: T): void;
     delete(key: string): boolean;
 }

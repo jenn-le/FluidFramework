@@ -3,15 +3,14 @@
  * Licensed under the MIT License.
  */
 
-import { notStrictEqual } from "assert";
 import { Serializable } from "@fluidframework/datastore-definitions";
 import { IHashbrown } from "./interfaces";
-import { tombstone, Tombstone } from "./common";
 
 export class Hashbrown<T = Serializable> implements IHashbrown<T> {
-    private readonly map = new Map<string, T | Tombstone>();
+    private readonly map = new Map<string, T>();
+    private readonly deleted = new Set<string>();
 
-    constructor(initialValues?: [string, T | Tombstone][]) {
+    constructor(initialValues?: [string, T][]) {
         if (initialValues !== undefined) {
             for (const [key, value] of initialValues) {
                 this.map.set(key, value);
@@ -19,19 +18,25 @@ export class Hashbrown<T = Serializable> implements IHashbrown<T> {
         }
     }
 
-    get(key: string): T | Tombstone | undefined {
+    get(key: string): T | undefined {
         return this.map.get(key);
     }
 
-    set(key: string, value: T) {
-        notStrictEqual(value, tombstone);
+    has(key: string): boolean {
+        return this.map.has(key);
+    }
 
-        // If the value is undefined, we mark the key for deletion
-        this.map.set(key, value === undefined ? tombstone : value);
+    set(key: string, value: T) {
+        if (this.deleted.has(key)) {
+            this.deleted.delete(key);
+        }
+
+        this.map.set(key, value);
     }
 
     delete(key: string): boolean {
-        this.map.set(key, tombstone);
+        this.map.delete(key);
+        this.deleted.add(key);
         return true;
     }
 }

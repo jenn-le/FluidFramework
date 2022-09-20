@@ -182,7 +182,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
      * @returns True if the key exists, false otherwise
      */
     public async has(key: string): Promise<boolean> {
-        return this.kernel.has(key);
+        return this.hashbrown.has(key) || this.beeTree.has(key);
     }
 
     /**
