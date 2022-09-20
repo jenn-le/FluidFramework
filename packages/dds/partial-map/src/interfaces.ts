@@ -61,7 +61,7 @@ import { Tombstone } from "./common";
 /**
  * TODO doc
  */
-export interface IBeeTree<T = Serializable> {
+export interface IBeeTree<T> {
     get(key: string): Promise<T | undefined>;
     has(key: string): Promise<boolean>;
     batchUpdate(updates: Map<string, T | Tombstone>): Promise< Map<string, T | Tombstone>>;
