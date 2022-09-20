@@ -84,4 +84,5 @@ export interface IHashbrown<T = Serializable> {
     has(key: string): boolean;
     set(key: string, value: T): void;
     delete(key: string): boolean;
+    clear(): void;
 }

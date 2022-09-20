@@ -157,9 +157,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
      * {@inheritDoc ISharedPartialMap.get}
      */
     public async get<T = Serializable>(key: string): Promise<T | undefined> {
-        const value = this.hashbrown.get(key);
-
-        if (value === undefined) {
+        if (!this.hashbrown.has(key)) {
             const stored = await this.beeTree.get(key);
 
             if (stored !== undefined) {
@@ -169,11 +167,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
             return stored as T;
         }
 
-        if (value === tombstone) {
-            return undefined;
-        }
-
-        return value as T;
+        return this.hashbrown.get(key) as T;
     }
 
     /**
@@ -182,14 +176,15 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
      * @returns True if the key exists, false otherwise
      */
     public async has(key: string): Promise<boolean> {
-        return this.hashbrown.has(key) || this.beeTree.has(key);
+        // TODO: this.beeTree.has(key)
+        return this.hashbrown.has(key);
     }
 
     /**
      * {@inheritDoc ISharedPartialMap.set}
      */
     public set(key: string, value: any): this {
-        this.kernel.set(key, value);
+        this.hashbrown.set(key, value);
         return this;
     }
 
@@ -199,14 +194,14 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
      * @returns True if the key existed and was deleted, false if it did not exist
      */
     public delete(key: string): boolean {
-        return this.kernel.delete(key);
+        return this.hashbrown.delete(key);
     }
 
     /**
      * Clear all data from the map.
      */
     public RAID(): void {
-        this.kernel.clear();
+        this.hashbrown.clear();
     }
 
     /**

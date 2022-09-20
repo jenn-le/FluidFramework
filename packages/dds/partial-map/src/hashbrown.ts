@@ -6,6 +6,10 @@
 import { Serializable } from "@fluidframework/datastore-definitions";
 import { IHashbrown } from "./interfaces";
 
+/**
+ * TODO:
+ * - cache eviction
+ */
 export class Hashbrown<T = Serializable> implements IHashbrown<T> {
     private readonly map = new Map<string, T>();
     private readonly deleted = new Set<string>();
@@ -38,5 +42,11 @@ export class Hashbrown<T = Serializable> implements IHashbrown<T> {
         this.map.delete(key);
         this.deleted.add(key);
         return true;
+    }
+
+    clear(): void {
+        for (const key of this.map.keys()) {
+            this.delete(key);
+        }
     }
 }
