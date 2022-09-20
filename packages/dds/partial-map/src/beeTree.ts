@@ -6,7 +6,6 @@
 import { IFluidHandle } from "@fluidframework/core-interfaces";
 import { Serializable } from "@fluidframework/datastore-definitions";
 import { IBeeTree, IHandleProvider, IQueenBee } from "./interfaces";
-import { Tombstone, tombstone } from "./common";
 
 export class BeeTree<T = Serializable> implements IBeeTree, IHandleProvider {
     private readonly map = new Map<string, T>();
@@ -17,22 +16,26 @@ export class BeeTree<T = Serializable> implements IBeeTree, IHandleProvider {
         return this.map.get(key);
 	}
 
-	async batchUpdate(updates: Map<string, T | Tombstone>): Promise<Map<string, T | Tombstone>> {
-        const failedUpdates = new Map<string, T | Tombstone>();
+	async batchUpdate(updates: Map<string, T>, deletes: Set<string>): Promise<string[]> {
+        const blobsToGc: string[] = [];
 
 		for (const [key, value] of updates.entries()) {
-            if (value === tombstone) {
-                if (!this.map.delete(key)) {
-                    failedUpdates.set(key, tombstone);
-                }
+            if (this.map.set(key, value)) {
+                blobsToGc.push(key);
             } else {
-                if (!this.map.set(key, value)) {
-                    failedUpdates.set(key, value);
-                }
+                return blobsToGc;
             }
         }
 
-        return failedUpdates;
+        for (const key of deletes.keys()) {
+            if (this.map.delete(key)) {
+                blobsToGc.push(key);
+            } else {
+                return blobsToGc;
+            }
+        }
+
+        return [];
 	}
 
     getGcData(): IFluidHandle[] {

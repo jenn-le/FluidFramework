@@ -3,7 +3,7 @@
  * Licensed under the MIT License.
  */
 
-import { ISequencedDocumentMessage, MessageType } from "@fluidframework/protocol-definitions";
+import { ISequencedDocumentMessage } from "@fluidframework/protocol-definitions";
 import {
     IChannelAttributes,
     IFluidDataStoreRuntime,
@@ -13,7 +13,6 @@ import {
     Serializable,
 } from "@fluidframework/datastore-definitions";
 import { ISummaryTreeWithStats, ITelemetryContext } from "@fluidframework/runtime-definitions";
-import { readAndParse } from "@fluidframework/driver-utils";
 import {
     IFluidSerializer,
     SharedObject,
@@ -23,7 +22,6 @@ import { pkgVersion } from "./packageVersion";
 import { BeeTree } from "./beeTree";
 import { IBeeTree, IHashbrown, ISharedPartialMapEvents } from "./interfaces";
 import { Hashbrown } from "./hashbrown";
-import { tombstone } from "./common";
 
 // interface IMapSerializationFormat {
 //     blobs?: string[];
