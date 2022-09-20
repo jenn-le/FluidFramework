@@ -7,7 +7,6 @@ import { IEventThisPlaceHolder } from "@fluidframework/common-definitions";
 import { IFluidHandle } from "@fluidframework/core-interfaces";
 import { Serializable } from "@fluidframework/datastore-definitions";
 import { ISharedObjectEvents } from "@fluidframework/shared-object-base";
-import { Tombstone } from "./common";
 
 /**
  * Type of "valueChanged" event parameter.
@@ -64,7 +63,7 @@ import { Tombstone } from "./common";
 export interface IBeeTree<T> {
     get(key: string): Promise<T | undefined>;
     has(key: string): Promise<boolean>;
-    batchUpdate(updates: Map<string, T | Tombstone>): Promise< Map<string, T | Tombstone>>;
+    batchUpdate(updates: Map<string, T>, deletes: Set<string>): Promise<string[]>;
 }
 
 export interface IHandleProvider {
@@ -80,8 +79,9 @@ export interface IQueenBee {
  * TODO doc
  */
 export interface IHashbrown<T = Serializable> {
-    get(key: string): T | Tombstone | undefined;
+    get(key: string): T | undefined;
     has(key: string): boolean;
     set(key: string, value: T): void;
     delete(key: string): boolean;
+    clear(): void;
 }
