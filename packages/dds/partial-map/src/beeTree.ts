@@ -39,3 +39,13 @@ export class BeeTree<T = Serializable> implements IBeeTree, IHandleProvider {
         throw new Error("Method not implemented.");
     }
 }
+
+// A node in a BeeTree
+class Pollen {
+    private readonly keys: string[] = [];
+    private readonly children: Pollen[] = [];
+
+    public constructor() {
+
+    }
+}

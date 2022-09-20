@@ -161,15 +161,19 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
 
         if (value === undefined) {
             const stored = await this.beeTree.get(key);
+
             if (stored !== undefined) {
                 this.hashbrown.set(key, stored);
             }
-            return stored;
+
+            return stored as T;
         }
 
         if (value === tombstone) {
             return undefined;
         }
+
+        return value as T;
     }
 
     /**
