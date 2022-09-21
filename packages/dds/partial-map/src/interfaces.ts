@@ -3,7 +3,8 @@
  * Licensed under the MIT License.
  */
 
-import { IEventThisPlaceHolder } from "@fluidframework/common-definitions";
+import { IEvent, IEventProvider, IEventThisPlaceHolder } from "@fluidframework/common-definitions";
+import { IFluidHandle } from "@fluidframework/core-interfaces";
 import { Serializable } from "@fluidframework/datastore-definitions";
 import { ISharedObjectEvents } from "@fluidframework/shared-object-base";
 import { IQueenBee } from "./persistedTypes";
@@ -57,13 +58,17 @@ import { IQueenBee } from "./persistedTypes";
         target: IEventThisPlaceHolder) => void);
 }
 
+export interface IBeeTreeEvents extends IEvent {
+    (event: "handleAdded" | "handleRemoved", listener: (handle: IFluidHandle) => void): void;
+}
+
 /**
  * TODO doc
  */
-export interface IBeeTree<T> {
+export interface IBeeTree<T> extends IEventProvider<IBeeTreeEvents> {
     get(key: string): Promise<T | undefined>;
     has(key: string): Promise<boolean>;
-    summarize(updates: Map<string, T>, deletes: Set<string>): Promise<[IQueenBee, string[]]>;
+    summarize(updates: Map<string, T>, deletes: Set<string>): Promise<IQueenBee>;
 }
 
 export interface IHandleProvider {
@@ -78,5 +83,5 @@ export interface IHashcache<T = Serializable> {
     has(key: string): boolean;
     set(key: string, value: T): void;
     delete(key: string): boolean;
-    clear(): void;
+    flushUpdates(): [Map<string, T>, Set<string>];
 }

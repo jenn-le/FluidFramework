@@ -4,20 +4,12 @@
  * Licensed under the MIT License.
  */
 
-import { IEvent, IEventProvider } from "@fluidframework/common-definitions";
 import { assert, TypedEventEmitter } from "@fluidframework/common-utils";
-import { IFluidHandle } from "@fluidframework/core-interfaces";
-import { IBeeTree, IHandleProvider } from "./interfaces";
+import { IBeeTree, IBeeTreeEvents, IHandleProvider } from "./interfaces";
 import { IQueenBee } from "./persistedTypes";
 
-interface BeeTreeEvents extends IEvent {
-    (event: "handleAdded", listener: (handle: IFluidHandle) => void): void;
-    (event: "handleRemoved", listener: (handle: IFluidHandle) => void): void;
-}
-
-export class BeeTree<T> extends TypedEventEmitter<BeeTreeEvents>, implements IBeeTree<T>, IHandleProvider {
+export class BeeTree<T> extends TypedEventEmitter<IBeeTreeEvents>, implements IBeeTree<T>, IHandleProvider {
     private readonly map = new Map<string, T>();
-    private readonly gcWhitelist = new Set<string>();
 
 	constructor(node: IQueenBee) {
         super();
@@ -31,33 +23,26 @@ export class BeeTree<T> extends TypedEventEmitter<BeeTreeEvents>, implements IBe
         throw new Error("Method not implemented.");
     }
 
-	async summarize(updates: Map<string, T>, deletes: Set<string>): Promise<[IQueenBee, string[]]> {
-        // This is kept in anticipation of a GC blacklist API
-        // TODO: this should be moved to wherever we do the actual reuploads
-        const blobsToGc: string[] = [];
+	async summarize(updates: Map<string, T>, deletes: Set<string>): Promise<IQueenBee> {
+        const queen: IQueenBee = {
+            keys: [],
+            children: [],
+        }
 
 		for (const [key, value] of updates.entries()) {
-            if (this.map.set(key, value)) {
-                blobsToGc.push(key);
-            } else {
-                return blobsToGc;
+            if (!this.map.set(key, value)) {
+                throw new Error('Set failed');
             }
         }
 
         for (const key of deletes.keys()) {
-            if (this.map.delete(key)) {
-                blobsToGc.push(key);
-            } else {
-                return blobsToGc;
+            if (!this.map.delete(key)) {
+                throw new Error('Delete failed');
             }
         }
 
-        return [];
+        return queen;
 	}
-
-    getGcWhitelist(): string[] {
-        return Array.from(this.gcWhitelist.values());
-    }
 }
 
 class BTreeNode<T> {
