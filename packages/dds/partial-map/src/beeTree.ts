@@ -4,7 +4,6 @@
  * Licensed under the MIT License.
  */
 
-import { Serializable } from "@fluidframework/datastore-definitions";
 import { IBeeTree, IHandleProvider, IQueenBee } from "./interfaces";
 
 export class BeeTree<T = any> implements IBeeTree<T>, IHandleProvider {
@@ -16,6 +15,10 @@ export class BeeTree<T = any> implements IBeeTree<T>, IHandleProvider {
 	async get(key: string): Promise<T | undefined> {
         return this.map.get(key);
 	}
+
+    async has(key: string): Promise<boolean> {
+        throw new Error("Method not implemented.");
+    }
 
 	async batchUpdate(updates: Map<string, T>, deletes: Set<string>): Promise<string[]> {
         const blobsToGc: string[] = [];

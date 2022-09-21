@@ -4,7 +4,6 @@
  */
 
 import { IEventThisPlaceHolder } from "@fluidframework/common-definitions";
-import { IFluidHandle } from "@fluidframework/core-interfaces";
 import { Serializable } from "@fluidframework/datastore-definitions";
 import { ISharedObjectEvents } from "@fluidframework/shared-object-base";
 
@@ -67,7 +66,7 @@ export interface IBeeTree<T> {
 }
 
 export interface IHandleProvider {
-    getGcData(): IFluidHandle[];
+    getGcWhitelist(): string[];
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
