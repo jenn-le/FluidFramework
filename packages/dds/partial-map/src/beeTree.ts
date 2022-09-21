@@ -7,7 +7,7 @@
 import { IBeeTree, IHandleProvider } from "./interfaces";
 import { IQueenBee } from "./persistedTypes";
 
-export class BeeTree<T = any> implements IBeeTree<T>, IHandleProvider {
+export class BeeTree<T> implements IBeeTree<T>, IHandleProvider {
     private readonly map = new Map<string, T>();
     private readonly gcWhitelist = new Set<string>();
 

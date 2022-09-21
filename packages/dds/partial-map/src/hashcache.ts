@@ -3,14 +3,13 @@
  * Licensed under the MIT License.
  */
 
-import { Serializable } from "@fluidframework/datastore-definitions";
 import { IHashcache } from "./interfaces";
 
 /**
  * TODO:
  * - cache eviction
  */
-export class Hashcache<T = Serializable> implements IHashcache<T> {
+export class Hashcache<T> implements IHashcache<T> {
     private readonly map = new Map<string, T>();
     private updates = new Map<string, T>();
     private deletes = new Set<string>();

@@ -123,8 +123,8 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
      */
     public readonly [Symbol.toStringTag]: string = "SharedPartialMap";
 
-    private readonly beeTree: IBeeTree;
-    private readonly hashbrown: IHashcache;
+    private readonly beeTree: IBeeTree<any>;
+    private readonly hashbrown: IHashcache<any>;
 
     /**
      * Do not call the constructor. Instead, you should use the {@link SharedPartialMap.create | create method}.
