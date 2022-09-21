@@ -21,6 +21,8 @@ export class BeeTree<T = any> implements IBeeTree<T>, IHandleProvider {
     }
 
 	async batchUpdate(updates: Map<string, T>, deletes: Set<string>): Promise<string[]> {
+        // This is kept in anticipation of a GC blacklist API
+        // TODO: this should be moved to wherever we do the actual reuploads
         const blobsToGc: string[] = [];
 
 		for (const [key, value] of updates.entries()) {

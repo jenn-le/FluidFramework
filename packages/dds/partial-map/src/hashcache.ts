@@ -4,13 +4,13 @@
  */
 
 import { Serializable } from "@fluidframework/datastore-definitions";
-import { IHashbrown } from "./interfaces";
+import { IHashcache } from "./interfaces";
 
 /**
  * TODO:
  * - cache eviction
  */
-export class Hashbrown<T = Serializable> implements IHashbrown<T> {
+export class Hashcache<T = Serializable> implements IHashcache<T> {
     private readonly map = new Map<string, T>();
     private readonly deleted = new Set<string>();
 

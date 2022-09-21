@@ -77,7 +77,7 @@ export interface IQueenBee {
 /**
  * TODO doc
  */
-export interface IHashbrown<T = Serializable> {
+export interface IHashcache<T = Serializable> {
     get(key: string): T | undefined;
     has(key: string): boolean;
     set(key: string, value: T): void;
