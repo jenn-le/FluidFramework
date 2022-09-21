@@ -3,12 +3,12 @@
  * Licensed under the MIT License.
  */
 
-import { IFluidHandle } from "@fluidframework/core-interfaces";
 import { Serializable } from "@fluidframework/datastore-definitions";
 import { IBeeTree, IHandleProvider, IQueenBee } from "./interfaces";
 
 export class BeeTree<T = Serializable> implements IBeeTree, IHandleProvider {
     private readonly map = new Map<string, T>();
+    private readonly gcWhitelist = new Set<string>();
 
 	constructor(node: IQueenBee) { }
 
@@ -38,8 +38,8 @@ export class BeeTree<T = Serializable> implements IBeeTree, IHandleProvider {
         return [];
 	}
 
-    getGcData(): IFluidHandle[] {
-        throw new Error("Method not implemented.");
+    getGcWhitelist(): string[] {
+        return Array.from(this.gcWhitelist.values());
     }
 }
 
