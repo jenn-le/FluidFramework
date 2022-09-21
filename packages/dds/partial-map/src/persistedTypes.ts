@@ -5,8 +5,13 @@
 
 import { ISerializedHandle } from "@fluidframework/shared-object-base";
 
+export interface IHive {
+    readonly queen: IQueenBee;
+    readonly honeycombs: Honeycombs;
+}
+
 /**
- * Serialization format used for hydrating the hive
+ * Serialization format used for hydrating the bee tree
  */
 export interface IQueenBee {
     readonly keys: readonly string[];
@@ -23,4 +28,4 @@ export interface IDroneBee {
     readonly values: readonly any[];
 }
 
-export type GcWhitelist = string[];
+export type Honeycombs = string[];
