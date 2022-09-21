@@ -9,38 +9,48 @@ import { IBeeTree, IBeeTreeEvents, IHandleProvider } from "./interfaces";
 import { IQueenBee } from "./persistedTypes";
 
 export class BeeTree<T> extends TypedEventEmitter<IBeeTreeEvents>, implements IBeeTree<T>, IHandleProvider {
-    private readonly map = new Map<string, T>();
+    private root?: IBeeTreeNode<T>;
+    private readonly order: number;
 
-	constructor(node: IQueenBee) {
+	public constructor({ order }: IQueenBee) {
         super();
+        this.order = order;
     }
 
-	async get(key: string): Promise<T | undefined> {
-        return this.map.get(key);
+	public async get(key: string): Promise<T | undefined> {
+        return this.root?.get(key);
 	}
 
-    async has(key: string): Promise<boolean> {
-        throw new Error("Method not implemented.");
+    public async has(key: string): Promise<boolean> {
+        return await this.get(key) !== undefined;
     }
 
     public clear(): void {
-        throw new Error("Method not implemented");
+        this.root = undefined;
     }
 
-	async summarize(updates: Map<string, T>, deletes: Set<string>): Promise<IQueenBee> {
+    private set(key: string, value: T): void {
+        if (this.root === undefined) {
+            this.root = new LeafyBeeTreeNode([key], [value], this.order);
+        } else {
+            this.root.set(key, value);
+        }
+    }
+
+	public async summarize(updates: Map<string, T>, deletes: Set<string>): Promise<IQueenBee> {
         const queen: IQueenBee = {
             keys: [],
             children: [],
         };
 
 		for (const [key, value] of updates.entries()) {
-            if (!this.map.set(key, value)) {
+            if (!this.set(key, value)) {
                 throw new Error("Set failed");
             }
         }
 
         for (const key of deletes.keys()) {
-            if (!this.map.delete(key)) {
+            if (!this.delete(key)) {
                 throw new Error("Delete failed");
             }
         }
@@ -54,6 +64,7 @@ export class BeeTree<T> extends TypedEventEmitter<IBeeTreeEvents>, implements IB
 }
 
 interface IBeeTreeNode<T> {
+    readonly order: number;
     keys: readonly string[];
     get(key: string): T | undefined;
     set(key: string, value: T): IBeeTreeNode<T> | [IBeeTreeNode<T>, IBeeTreeNode<T>];
@@ -64,6 +75,7 @@ class BeeTreeNode<T> implements IBeeTreeNode<T> {
         public readonly keys: readonly string[],
         // A node with no children is a "leafy node" (its would-be children are leaves)
         public readonly children: readonly IBeeTreeNode<T>[],
+        public readonly order: number,
     ) {}
 
     public get(key: string): T | undefined {
@@ -85,7 +97,7 @@ class BeeTreeNode<T> implements IBeeTreeNode<T> {
                     const [childA, childB] = childResult;
                     const keys = insert(this.keys, i, childB.keys[0]);
                     const children = insert(this.children, i, childA, childB);
-                    if (keys.length >= 32) {
+                    if (keys.length >= this.order) {
                         // Split
                         const keys2 = keys.splice(Math.ceil(keys.length / 2), Math.floor(keys.length / 2));
                         const children2 = children.splice(
@@ -94,15 +106,15 @@ class BeeTreeNode<T> implements IBeeTreeNode<T> {
                         );
 
                         return [
-                            new BeeTreeNode(keys, children),
-                            new BeeTreeNode(keys2, children2),
+                            new BeeTreeNode(keys, children, this.order),
+                            new BeeTreeNode(keys2, children2, this.order),
                         ];
                     }
                 } else {
                     // Replace the child
                     const children = [...this.children];
                     children[i] = childResult;
-                    return new BeeTreeNode(this.keys, children);
+                    return new BeeTreeNode(this.keys, children, this.order);
                 }
             }
         }
@@ -111,10 +123,11 @@ class BeeTreeNode<T> implements IBeeTreeNode<T> {
     }
 }
 
-class LeafyBTreeNode<T> implements IBeeTreeNode<T> {
+class LeafyBeeTreeNode<T> implements IBeeTreeNode<T> {
     public constructor(
         public readonly keys: readonly string[],
         public readonly values: readonly T[],
+        public readonly order: number,
     ) {
         assert(keys.length > 0, "Must have at least one key");
         assert(keys.length === values.length, "Invalid keys or values");
@@ -130,26 +143,26 @@ class LeafyBTreeNode<T> implements IBeeTreeNode<T> {
         return undefined;
     }
 
-    set(key: string, value: T): LeafyBTreeNode<T> | [LeafyBTreeNode<T>, LeafyBTreeNode<T>] {
+    set(key: string, value: T): LeafyBeeTreeNode<T> | [LeafyBeeTreeNode<T>, LeafyBeeTreeNode<T>] {
         for (let i = 0; i <= this.keys.length; i++) {
             if (key === this.keys[i]) {
                 // Already have a value for this key, so just clone ourselves but replace the value
                 const values = [...this.values.slice(0, i), value, ...this.values.slice(i + 1)];
-                return new LeafyBTreeNode(this.keys, values);
+                return new LeafyBeeTreeNode(this.keys, values, this.order);
             }
             if (i === this.keys.length || key < this.keys[i]) {
                 const keys = insert(this.keys, i, key);
                 const values = insert(this.values, i, value);
-                if (keys.length >= 32) {
+                if (keys.length >= this.order) {
                     // Split
                     const keys2 = keys.splice(Math.ceil(keys.length / 2), Math.floor(keys.length / 2));
                     const values2 = values.splice(Math.ceil(values.length / 2), Math.floor(values.length / 2));
                     return [
-                        new LeafyBTreeNode(keys, values),
-                        new LeafyBTreeNode(keys2, values2),
+                        new LeafyBeeTreeNode(keys, values, this.order),
+                        new LeafyBeeTreeNode(keys2, values2, this.order),
                     ];
                 }
-                return new LeafyBTreeNode(keys, values);
+                return new LeafyBeeTreeNode(keys, values, this.order);
             }
         }
 

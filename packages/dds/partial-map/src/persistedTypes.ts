@@ -14,6 +14,7 @@ export interface IHive {
  * Serialization format used for hydrating the bee tree
  */
 export interface IQueenBee {
+    readonly order: number;
     readonly keys: readonly string[];
     readonly children: readonly ISerializedHandle[];
 }
