@@ -11,8 +11,7 @@ import { IBeeTree, IHandleProvider } from "./interfaces";
 import { IQueenBee } from "./persistedTypes";
 
 interface BeeTreeEvents extends IEvent {
-    (event: "handleAdded", listener: (handle: IFluidHandle) => void): void;
-    (event: "handleRemoved", listener: (handle: IFluidHandle) => void): void;
+    (event: "handleAdded" | "handleRemoved", listener: (handle: IFluidHandle) => void): void;
 }
 
 export class BeeTree<T> extends TypedEventEmitter<BeeTreeEvents>, implements IBeeTree<T>, IHandleProvider {
@@ -29,6 +28,10 @@ export class BeeTree<T> extends TypedEventEmitter<BeeTreeEvents>, implements IBe
 
     async has(key: string): Promise<boolean> {
         throw new Error("Method not implemented.");
+    }
+
+    public clear(): void {
+        throw new Error("Method not implemented");
     }
 
 	async summarize(updates: Map<string, T>, deletes: Set<string>): Promise<[IQueenBee, string[]]> {
@@ -60,71 +63,107 @@ export class BeeTree<T> extends TypedEventEmitter<BeeTreeEvents>, implements IBe
     }
 }
 
-class BTreeNode<T> {
+interface IBeeTreeNode<T> {
+    keys: readonly string[];
+    get(key: string): T | undefined;
+    set(key: string, value: T): IBeeTreeNode<T> | [IBeeTreeNode<T>, IBeeTreeNode<T>];
+}
+
+class BeeTreeNode<T> implements IBeeTreeNode<T> {
     public constructor(
         public readonly keys: readonly string[],
-        public readonly values: readonly T[],
         // A node with no children is a "leafy node" (its would-be children are leaves)
-        public readonly children?: readonly BTreeNode<T>[],
-    ) {
-        assert(values.length === keys.length, "Invalid keys or values");
-        if (children !== undefined) {
-            assert(keys.length === children.length - 1, "Invalid keys or children");
-        }
-    }
+        public readonly children: readonly IBeeTreeNode<T>[],
+    ) {}
 
     public get(key: string): T | undefined {
         for (let i = 0; i < this.keys.length; i++) {
-            if (key === this.keys[i]) {
-                return this.values[i];
-            }
             if (key < this.keys[i]) {
-                return this.children?.[i].get(key);
+                return this.children[i].get(key);
             }
         }
 
         return this.children?.[this.children.length - 1].get(key);
     }
 
-    public set(key: string, value: T): BTreeNode<T> | [BTreeNode<T>, BTreeNode<T>] {
-        for (let i = 0; i < this.keys.length; i++) {
-            if (key === this.keys[i]) {
-                // Already have a value for this key, so just clone ourselves but replace the value
-                const values = [...this.values.slice(0, i), value, ...this.values.slice(i + 1)];
-                return new BTreeNode(this.keys, values, this.children);
-            }
-            if (key < this.keys[i]) {
-                if (this.children === undefined) {
-                    // We're a leafy node, so we just want to add the key value pair
-                    const keys = insert(this.keys, i, key);
-                    const values = insert(this.values, i, value);
+    public set(key: string, value: T): BeeTreeNode<T> | [BeeTreeNode<T>, BeeTreeNode<T>] {
+        for (let i = 0; i <= this.keys.length; i++) {
+            if (i === this.keys.length || key < this.keys[i]) {
+                const childResult = this.children[i].set(key, value);
+                if (Array.isArray(childResult)) {
+                    // The child split in half
+                    const [childA, childB] = childResult;
+                    const keys = insert(this.keys, i, childB.keys[0]);
+                    const children = insert(this.children, i, childA, childB);
                     if (keys.length >= 32) {
                         // Split
                         const keys2 = keys.splice(Math.ceil(keys.length / 2), Math.floor(keys.length / 2));
-                        const values2 = values.splice(Math.ceil(values.length / 2), Math.floor(values.length / 2));
+                        const children2 = children.splice(
+                            Math.ceil(children.length / 2),
+                            Math.floor(children.length / 2),
+                        );
+
                         return [
-                            new BTreeNode(keys, values),
-                            new BTreeNode(keys2, values2),
+                            new BeeTreeNode(keys, children),
+                            new BeeTreeNode(keys2, children2),
                         ];
                     }
-                    return new BTreeNode(keys, values);
-                }
-                // We're a (non-leafy) interior node, so delegate the operation to a child
-                const childResult = this.children[i].set(key, value);
-                if (Array.isArray(childResult)) {
-                    // Child split
-                    const [childA, childB] = childResult;
-                    const keys = insert(this.keys, i,
-                    const children = insert(this.children, i, ...childResult);
                 } else {
+                    // Replace the child
                     const children = [...this.children];
                     children[i] = childResult;
-                    return new BTreeNode(this.keys, this.values, children);
+                    return new BeeTreeNode(this.keys, children);
                 }
             }
         }
 
-        return this.children[this.children.length - 1].set(key, value);
+        throw new Error("Unreachable code");
+    }
+}
+
+class LeafyBTreeNode<T> implements IBeeTreeNode<T> {
+    public constructor(
+        public readonly keys: readonly string[],
+        public readonly values: readonly T[],
+    ) {
+        assert(keys.length > 0, "Must have at least one key");
+        assert(keys.length === values.length, "Invalid keys or values");
+    }
+
+    get(key: string): T | undefined {
+        for (let i = 0; i < this.keys.length; i++) {
+            if (key === this.keys[i]) {
+                return this.values[i];
+            }
+        }
+
+        return undefined;
+    }
+
+    set(key: string, value: T): LeafyBTreeNode<T> | [LeafyBTreeNode<T>, LeafyBTreeNode<T>] {
+        for (let i = 0; i <= this.keys.length; i++) {
+            if (key === this.keys[i]) {
+                // Already have a value for this key, so just clone ourselves but replace the value
+                const values = [...this.values.slice(0, i), value, ...this.values.slice(i + 1)];
+                return new LeafyBTreeNode(this.keys, values);
+            }
+            if (i === this.keys.length || key < this.keys[i]) {
+                const keys = insert(this.keys, i, key);
+                const values = insert(this.values, i, value);
+                if (keys.length >= 32) {
+                    // Split
+                    const keys2 = keys.splice(Math.ceil(keys.length / 2), Math.floor(keys.length / 2));
+                    const values2 = values.splice(Math.ceil(values.length / 2), Math.floor(values.length / 2));
+                    return [
+                        new LeafyBTreeNode(keys, values),
+                        new LeafyBTreeNode(keys2, values2),
+                    ];
+                }
+                return new LeafyBTreeNode(keys, values);
+            }
+        }
+
+        throw new Error("Unreachable code");
     }
 }
 
