@@ -4,7 +4,8 @@
  * Licensed under the MIT License.
  */
 
-import { IBeeTree, IHandleProvider, IQueenBee } from "./interfaces";
+import { IBeeTree, IHandleProvider } from "./interfaces";
+import { IQueenBee } from "./persistedTypes";
 
 export class BeeTree<T = any> implements IBeeTree<T>, IHandleProvider {
     private readonly map = new Map<string, T>();
@@ -20,7 +21,7 @@ export class BeeTree<T = any> implements IBeeTree<T>, IHandleProvider {
         throw new Error("Method not implemented.");
     }
 
-	async batchUpdate(updates: Map<string, T>, deletes: Set<string>): Promise<string[]> {
+	async summarize(updates: Map<string, T>, deletes: Set<string>): Promise<[IQueenBee, string[]]> {
         // This is kept in anticipation of a GC blacklist API
         // TODO: this should be moved to wherever we do the actual reuploads
         const blobsToGc: string[] = [];

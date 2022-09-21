@@ -6,6 +6,7 @@
 import { IEventThisPlaceHolder } from "@fluidframework/common-definitions";
 import { Serializable } from "@fluidframework/datastore-definitions";
 import { ISharedObjectEvents } from "@fluidframework/shared-object-base";
+import { IQueenBee } from "./persistedTypes";
 
 /**
  * Type of "valueChanged" event parameter.
@@ -62,16 +63,11 @@ import { ISharedObjectEvents } from "@fluidframework/shared-object-base";
 export interface IBeeTree<T> {
     get(key: string): Promise<T | undefined>;
     has(key: string): Promise<boolean>;
-    batchUpdate(updates: Map<string, T>, deletes: Set<string>): Promise<string[]>;
+    summarize(updates: Map<string, T>, deletes: Set<string>): Promise<[IQueenBee, string[]]>;
 }
 
 export interface IHandleProvider {
     getGcWhitelist(): string[];
-}
-
-// eslint-disable-next-line @typescript-eslint/no-empty-interface
-export interface IQueenBee {
-
 }
 
 /**
