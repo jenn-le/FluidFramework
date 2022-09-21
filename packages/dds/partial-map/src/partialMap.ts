@@ -12,23 +12,24 @@ import {
     IChannelFactory,
     Serializable,
 } from "@fluidframework/datastore-definitions";
-import { ISummaryTreeWithStats, ITelemetryContext } from "@fluidframework/runtime-definitions";
+import { IGarbageCollectionData, ISummaryTreeWithStats, ITelemetryContext } from "@fluidframework/runtime-definitions";
 import {
+    createSingleBlobSummary,
     IFluidSerializer,
     SharedObject,
 } from "@fluidframework/shared-object-base";
-import { SummaryTreeBuilder } from "@fluidframework/runtime-utils";
 import { pkgVersion } from "./packageVersion";
 import { BeeTree } from "./beeTree";
 import { IBeeTree, IHashcache, ISharedPartialMapEvents } from "./interfaces";
 import { Hashcache } from "./hashcache";
+import { IHive, IQueenBee } from "./persistedTypes";
 
 // interface IMapSerializationFormat {
 //     blobs?: string[];
 //     content: IMapDataObjectSerializable;
 // }
 
-const snapshotFileName = "header";
+const snapshotFileName = "hive";
 
 /**
  * {@link @fluidframework/datastore-definitions#IChannelFactory} for {@link SharedPartialMap}.
@@ -89,6 +90,11 @@ export class PartialMapFactory implements IChannelFactory {
     }
 }
 
+const initialQueen: IQueenBee = {
+    keys: [],
+    children: [],
+};
+
 /**
  * {@inheritDoc ISharedPartialMap}
  */
@@ -123,8 +129,11 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
      */
     public readonly [Symbol.toStringTag]: string = "SharedPartialMap";
 
-    private readonly beeTree: IBeeTree<any>;
-    private readonly hashbrown: IHashcache<any>;
+    private beeTree: IBeeTree<any> = undefined as unknown as IBeeTree<any>;
+    private hashcache: IHashcache<any> = undefined as unknown as IHashcache<any>;
+
+    // Handles to pass to the GC whitelist
+    private readonly honeycombs = new Set<string>();
 
     /**
      * Do not call the constructor. Instead, you should use the {@link SharedPartialMap.create | create method}.
@@ -139,8 +148,24 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         attributes: IChannelAttributes,
     ) {
         super(id, runtime, attributes, "fluid_map_");
-        this.beeTree = new BeeTree({});
-        this.hashbrown = new Hashcache();
+        this.initializeBeeTree();
+    }
+
+    private initializeBeeTree(): void {
+        this.beeTree = new BeeTree(initialQueen);
+        this.hashcache = new Hashcache();
+
+        this.beeTree.on("handleAdded", (handle) => {
+            // TODO do we need to do anything?
+            this.honeycombs.add(handle.absolutePath);
+        });
+
+        this.beeTree.on("handleRemoved", (handle) => {
+            // TODO should we still use this for GC?
+            this.honeycombs.delete(handle.absolutePath);
+        });
+
+        this.honeycombs.clear();
     }
 
     /**
@@ -155,17 +180,17 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
      * {@inheritDoc ISharedPartialMap.get}
      */
     public async get<T = Serializable>(key: string): Promise<T | undefined> {
-        if (!this.hashbrown.has(key)) {
+        if (!this.hashcache.has(key)) {
             const stored = await this.beeTree.get(key);
 
             if (stored !== undefined) {
-                this.hashbrown.set(key, stored);
+                this.hashcache.set(key, stored);
             }
 
             return stored as T;
         }
 
-        return this.hashbrown.get(key) as T;
+        return this.hashcache.get(key) as T;
     }
 
     /**
@@ -175,14 +200,14 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
      */
     public async has(key: string): Promise<boolean> {
         // TODO: this.beeTree.has(key)
-        return this.hashbrown.has(key);
+        return this.hashcache.has(key);
     }
 
     /**
      * {@inheritDoc ISharedPartialMap.set}
      */
     public set(key: string, value: any): this {
-        this.hashbrown.set(key, value);
+        this.hashcache.set(key, value);
         return this;
     }
 
@@ -192,14 +217,14 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
      * @returns True if the key existed and was deleted, false if it did not exist
      */
     public delete(key: string): boolean {
-        return this.hashbrown.delete(key);
+        return this.hashcache.delete(key);
     }
 
     /**
      * Clear all data from the map.
      */
     public RAID(): void {
-        this.hashbrown.clear();
+        this.initializeBeeTree();
     }
 
     /**
@@ -210,7 +235,35 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         serializer: IFluidSerializer,
         telemetryContext?: ITelemetryContext,
     ): ISummaryTreeWithStats {
-        throw new Error("Implement me");
+        throw new Error("SharedPartialMap");
+    }
+
+    override getAttachSummary(
+        fullTree?: boolean | undefined,
+        trackState?: boolean | undefined,
+        telemetryContext?: ITelemetryContext | undefined,
+    ): ISummaryTreeWithStats {
+        throw new Error("implement me pls");
+    }
+
+    override async summarize(
+        fullTree?: boolean | undefined,
+        trackState?: boolean | undefined,
+        telemetryContext?: ITelemetryContext | undefined,
+    ): Promise<ISummaryTreeWithStats> {
+        const [updates, deletes] = this.hashcache.flushUpdates();
+        const queen = await this.beeTree.summarize(updates, deletes);
+
+        const hive: IHive = {
+            queen,
+            honeycombs: Array.from(this.honeycombs.values()),
+        };
+
+        return createSingleBlobSummary(snapshotFileName, this.serializer.stringify(hive, this.handle));
+    }
+
+    public getGCData(fullGC?: boolean | undefined): IGarbageCollectionData {
+        return { gcNodes: { "/": Array.from(this.honeycombs.values()) } };
     }
 
     /**
