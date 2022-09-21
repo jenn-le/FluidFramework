@@ -4,21 +4,36 @@
  * Licensed under the MIT License.
  */
 
-import { assert } from "@fluidframework/common-utils";
+import { IEvent, IEventProvider } from "@fluidframework/common-definitions";
+import { assert, TypedEventEmitter } from "@fluidframework/common-utils";
 import { IFluidHandle } from "@fluidframework/core-interfaces";
-import { Serializable } from "@fluidframework/datastore-definitions";
-import { IBeeTree, IHandleProvider, IQueenBee } from "./interfaces";
+import { IBeeTree, IHandleProvider } from "./interfaces";
+import { IQueenBee } from "./persistedTypes";
 
-export class BeeTree<T = any> implements IBeeTree<T>, IHandleProvider {
+interface BeeTreeEvents extends IEvent {
+    (event: "handleAdded", listener: (handle: IFluidHandle) => void): void;
+    (event: "handleRemoved", listener: (handle: IFluidHandle) => void): void;
+}
+
+export class BeeTree<T> extends TypedEventEmitter<BeeTreeEvents>, implements IBeeTree<T>, IHandleProvider {
     private readonly map = new Map<string, T>();
+    private readonly gcWhitelist = new Set<string>();
 
-	constructor(node: IQueenBee) { }
+	constructor(node: IQueenBee) {
+        super();
+    }
 
 	async get(key: string): Promise<T | undefined> {
         return this.map.get(key);
 	}
 
-	async batchUpdate(updates: Map<string, T>, deletes: Set<string>): Promise<string[]> {
+    async has(key: string): Promise<boolean> {
+        throw new Error("Method not implemented.");
+    }
+
+	async summarize(updates: Map<string, T>, deletes: Set<string>): Promise<[IQueenBee, string[]]> {
+        // This is kept in anticipation of a GC blacklist API
+        // TODO: this should be moved to wherever we do the actual reuploads
         const blobsToGc: string[] = [];
 
 		for (const [key, value] of updates.entries()) {
@@ -40,8 +55,8 @@ export class BeeTree<T = any> implements IBeeTree<T>, IHandleProvider {
         return [];
 	}
 
-    getGcData(): IFluidHandle[] {
-        throw new Error("Method not implemented.");
+    getGcWhitelist(): string[] {
+        return Array.from(this.gcWhitelist.values());
     }
 }
 

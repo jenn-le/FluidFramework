@@ -20,8 +20,8 @@ import {
 import { SummaryTreeBuilder } from "@fluidframework/runtime-utils";
 import { pkgVersion } from "./packageVersion";
 import { BeeTree } from "./beeTree";
-import { IBeeTree, IHashbrown, ISharedPartialMapEvents } from "./interfaces";
-import { Hashbrown } from "./hashbrown";
+import { IBeeTree, IHashcache, ISharedPartialMapEvents } from "./interfaces";
+import { Hashcache } from "./hashcache";
 
 // interface IMapSerializationFormat {
 //     blobs?: string[];
@@ -123,8 +123,8 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
      */
     public readonly [Symbol.toStringTag]: string = "SharedPartialMap";
 
-    private readonly beeTree: IBeeTree;
-    private readonly hashbrown: IHashbrown;
+    private readonly beeTree: IBeeTree<any>;
+    private readonly hashbrown: IHashcache<any>;
 
     /**
      * Do not call the constructor. Instead, you should use the {@link SharedPartialMap.create | create method}.
@@ -140,7 +140,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
     ) {
         super(id, runtime, attributes, "fluid_map_");
         this.beeTree = new BeeTree({});
-        this.hashbrown = new Hashbrown();
+        this.hashbrown = new Hashcache();
     }
 
     /**
