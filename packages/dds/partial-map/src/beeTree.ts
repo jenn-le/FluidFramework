@@ -4,6 +4,7 @@
  * Licensed under the MIT License.
  */
 
+import { assert } from "@fluidframework/common-utils";
 import { IFluidHandle } from "@fluidframework/core-interfaces";
 import { Serializable } from "@fluidframework/datastore-definitions";
 import { IBeeTree, IHandleProvider, IQueenBee } from "./interfaces";
@@ -44,31 +45,71 @@ export class BeeTree<T = any> implements IBeeTree<T>, IHandleProvider {
     }
 }
 
-// A node in a BeeTree
-
-interface IBeeTreeNode<T> {
-    get(key: string): T;
-    insert(key: string, value: T): void; // TODO return bool or something?
-}
-
-class BTreeNode<T> implements IBeeTreeNode<T> {
-    public constructor(public readonly keys: readonly string[], public readonly children: readonly IBeeTreeNode<T>[]) {
-
+class BTreeNode<T> {
+    public constructor(
+        public readonly keys: readonly string[],
+        public readonly values: readonly T[],
+        // A node with no children is a "leafy node" (its would-be children are leaves)
+        public readonly children?: readonly BTreeNode<T>[],
+    ) {
+        assert(values.length === keys.length, "Invalid keys or values");
+        if (children !== undefined) {
+            assert(keys.length === children.length - 1, "Invalid keys or children");
+        }
     }
 
-    public get(key: string): T {
+    public get(key: string): T | undefined {
         for (let i = 0; i < this.keys.length; i++) {
+            if (key === this.keys[i]) {
+                return this.values[i];
+            }
             if (key < this.keys[i]) {
-                return this.children[i].get(key);
+                return this.children?.[i].get(key);
             }
         }
 
-        return this.children[this.children.length - 1].get(key);
+        return this.children?.[this.children.length - 1].get(key);
     }
 
+    public set(key: string, value: T): BTreeNode<T> | [BTreeNode<T>, BTreeNode<T>] {
+        for (let i = 0; i < this.keys.length; i++) {
+            if (key === this.keys[i]) {
+                // Already have a value for this key, so just clone ourselves but replace the value
+                const values = [...this.values.slice(0, i), value, ...this.values.slice(i + 1)];
+                return new BTreeNode(this.keys, values, this.children);
+            }
+            if (key < this.keys[i]) {
+                if (this.children === undefined) {
+                    // We're a leafy node, so we just want to add the key value pair
+                    const keys = insert(this.keys, i, key);
+                    const values = insert(this.values, i, value);
+                    if (keys.length >= 32) {
+                        // Split
+                        const keys2 = keys.splice(Math.ceil(keys.length / 2), Math.floor(keys.length / 2));
+                        const values2 = values.splice(Math.ceil(values.length / 2), Math.floor(values.length / 2));
+                        return [
+                            new BTreeNode(keys, values),
+                            new BTreeNode(keys2, values2),
+                        ];
+                    }
+                    return new BTreeNode(keys, values);
+                }
+                // We're a (non-leafy) interior node, so delegate the operation to a child
+                const childResult = this.children[i].set(key, value);
+                if (Array.isArray(childResult)) {
+                    // Child split
+                    const [childA, childB] = childResult;
+                    const keys = insert(this.keys, i,
+                    const children = insert(this.children, i, ...childResult);
+                } else {
+                    const children = [...this.children];
+                    children[i] = childResult;
+                    return new BTreeNode(this.keys, this.values, children);
+                }
+            }
+        }
 
-    public insert(key: string, value: T): void {
-        throw new Error("Method not implemented.");
+        return this.children[this.children.length - 1].set(key, value);
     }
 }
 
@@ -104,4 +145,8 @@ function search<T>(
        mid = (low + high) >> 1;
    }
    return (mid * 2) ^ failureXor;
+}
+
+function insert<T>(array: readonly T[], index: number, ...values: T[]): T[] {
+    return [...array.slice(0, index), ...values, ...array.slice(index + 1)];
 }
