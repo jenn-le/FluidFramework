@@ -36,5 +36,9 @@ function mockBeeTree<T>(order = 3): BeeTree<T, number> {
 }
 
 describe("BeeTree", () => {
-
+    it("can set and read a value", async () => {
+        const beeTree = mockBeeTree();
+        await beeTree.set("a", 42);
+        assert.equal(await beeTree.get("a"), 42);
+    });
 });

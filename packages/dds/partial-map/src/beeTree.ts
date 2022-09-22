@@ -34,7 +34,7 @@ export class BeeTree<T, THandle> implements IBeeTree<T, THandle>, IHandleProvide
         return this.root.has(key);
     }
 
-    private async set(key: string, value: T): Promise<void> {
+    public async set(key: string, value: T): Promise<void> {
         const result = await this.root.set(key, value);
         if (Array.isArray(result)) {
             const [nodeA, k, nodeB] = result;
@@ -53,7 +53,7 @@ export class BeeTree<T, THandle> implements IBeeTree<T, THandle>, IHandleProvide
         }
     }
 
-    private async delete(key: string): Promise<void> {
+    public async delete(key: string): Promise<void> {
         await this.root.delete(key);
     }
 

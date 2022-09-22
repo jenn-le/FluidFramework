@@ -16,15 +16,15 @@ import { IGarbageCollectionData, ISummaryTreeWithStats, ITelemetryContext } from
 import {
     createSingleBlobSummary,
     IFluidSerializer,
+    ISerializedHandle,
     SharedObject,
 } from "@fluidframework/shared-object-base";
+import { readAndParse } from "@fluidframework/driver-utils";
 import { pkgVersion } from "./packageVersion";
-import { BeeTree } from "./beeTree";
 import { IBeeTree, IHashcache, ISharedPartialMapEvents } from "./interfaces";
 import { Hashcache } from "./hashcache";
-import { ClearOp, DeleteOp, IHive, IQueenBee, OpType, PartialMapOp, SetOp } from "./persistedTypes";
+import { ClearOp, DeleteOp, IHive, OpType, PartialMapOp, SetOp } from "./persistedTypes";
 import { BeeTreeJSMap } from "./beeTreeTemp";
-import { readAndParse } from "@fluidframework/driver-utils";
 
 // interface IMapSerializationFormat {
 //     blobs?: string[];
@@ -126,7 +126,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
      */
     public readonly [Symbol.toStringTag]: string = "SharedPartialMap";
 
-    private beeTree: IBeeTree<any> = undefined as unknown as IBeeTree<any>;
+    private beeTree: IBeeTree<any, ISerializedHandle> = undefined as unknown as IBeeTree<any, ISerializedHandle>;
     private hashcache: IHashcache<any> = undefined as unknown as IHashcache<any>;
 
     // Handles to pass to the GC whitelist
@@ -154,7 +154,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         this.initializePartialMap(new BeeTreeJSMap());
     }
 
-    private initializePartialMap(beeTree: IBeeTree<any>): void {
+    private initializePartialMap(beeTree: IBeeTree<any, ISerializedHandle>): void {
         // If GC uses a blacklist, we need to go through the previous beeTree and GC all the blobs
         this.beeTree = beeTree;
         this.hashcache = new Hashcache();
