@@ -37,39 +37,43 @@ function mockBeeTree<T>(order = 3): BeeTree<T, number> {
 
 describe("BeeTree", () => {
     it("can set and read a single value", async () => {
-        const beeTree = mockBeeTree();
+        const beeTree = mockBeeTree<number>();
         await beeTree.set("key", 42);
         assert.equal(await beeTree.get("key"), 42);
     });
 
     it("can has a single value", async () => {
-        const beeTree = mockBeeTree();
+        const beeTree = mockBeeTree<string>();
         assert.equal(await beeTree.has("key"), false);
         await beeTree.set("key", "cheezburger");
         assert.equal(await beeTree.has("key"), true);
     });
 
     it("can delete a single value", async () => {
-        const beeTree = mockBeeTree();
+        const beeTree = mockBeeTree<number>();
         await beeTree.set("key", 42);
         await beeTree.delete("key");
         assert.equal(await beeTree.has("key"), false);
     });
 
     it("can overwrite a single value", async () => {
-        const beeTree = mockBeeTree();
+        const beeTree = mockBeeTree<number>();
         await beeTree.set("key", 42);
         await beeTree.set("key", 43);
         assert.equal(await beeTree.get("key"), 43);
     });
 
     it("can set many values", async () => {
-        const beeTree = mockBeeTree();
-        const values: number[] = [];
-        for (let i = 0; i < 100; i++) {
-            values.push(i);
+        const beeTree = mockBeeTree<string>();
+        for (const key of manyKeys) {
+            await beeTree.set(key, key);
         }
-        await beeTree.set("key", 42);
-        assert.equal(await beeTree.get("key"), 42);
+
+        for (const key of manyKeys) {
+            assert.equal(await beeTree.get(key), key);
+        }
     });
 });
+
+// eslint-disable-next-line max-len
+const manyKeys = "Did you ever hear the tragedy of Darth Plagueis The Wise? I thought not. It’s not a story the Jedi would tell you. It’s a Sith legend. Darth Plagueis was a Dark Lord of the Sith, so powerful and so wise he could use the Force to influence the midichlorians to create life… He had such a knowledge of the dark side that he could even keep the ones he cared about from dying. The dark side of the Force is a pathway to many abilities some consider to be unnatural. He became so powerful… the only thing he was afraid of was losing his power, which eventually, of course, he did. Unfortunately, he taught his apprentice everything he knew, then his apprentice killed him in his sleep. Ironic. He could save others from death, but not himself.".split(" ");

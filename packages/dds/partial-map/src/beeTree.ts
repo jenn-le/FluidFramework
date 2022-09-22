@@ -266,39 +266,39 @@ class LeafyBeeTreeNode<T, THandle> implements IBeeTreeNode<T, THandle> {
     }
 }
 
-/**
-* The value xor'd with the result index when a search fails.
-*/
-const failureXor = -1;
+// /**
+// * The value xor'd with the result index when a search fails.
+// */
+// const failureXor = -1;
 
-/**
-* Performs a binary search on the sorted array.
-* @returns the index of the key for `search`, or (if not present) the index it would have been inserted into xor'd
-* with `failureXor`. Note that negating is not an adequate solution as that could result in -0.
-*/
-function search<T>(
-   elements: readonly T[],
-   target: T,
-   comparator: (a: T, b: T) => number,
-): number | undefined {
-   let low = 0;
-   let high = elements.length - 1;
-   let mid = high >> 1;
-   while (low < high) {
-       const c = comparator(target, elements[mid]);
-       if (c > 0) {
-           low = mid + 1;
-       } else if (c < 0) {
-           high = mid;
-       } else if (c === 0) {
-           return mid;
-       } else {
-           throw new Error("Invalid comparator.");
-       }
-       mid = (low + high) >> 1;
-   }
-   return (mid * 2) ^ failureXor;
-}
+// /**
+// * Performs a binary search on the sorted array.
+// * @returns the index of the key for `search`, or (if not present) the index it would have been inserted into xor'd
+// * with `failureXor`. Note that negating is not an adequate solution as that could result in -0.
+// */
+// function search<T>(
+//    elements: readonly T[],
+//    target: T,
+//    comparator: (a: T, b: T) => number,
+// ): number | undefined {
+//    let low = 0;
+//    let high = elements.length - 1;
+//    let mid = high >> 1;
+//    while (low < high) {
+//        const c = comparator(target, elements[mid]);
+//        if (c > 0) {
+//            low = mid + 1;
+//        } else if (c < 0) {
+//            high = mid;
+//        } else if (c === 0) {
+//            return mid;
+//        } else {
+//            throw new Error("Invalid comparator.");
+//        }
+//        mid = (low + high) >> 1;
+//    }
+//    return (mid * 2) ^ failureXor;
+// }
 
 function insert<T>(array: readonly T[], index: number, ...values: T[]): T[] {
     return [...array.slice(0, index), ...values, ...array.slice(index + 1)];
