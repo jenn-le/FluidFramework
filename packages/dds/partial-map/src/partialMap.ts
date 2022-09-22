@@ -22,7 +22,7 @@ import { pkgVersion } from "./packageVersion";
 import { BeeTree } from "./beeTree";
 import { IBeeTree, IHashcache, ISharedPartialMapEvents } from "./interfaces";
 import { Hashcache } from "./hashcache";
-import { IHive, IQueenBee } from "./persistedTypes";
+import { ClearOp, DeleteOp, IHive, IQueenBee, OpType, PartialMapOp, SetOp } from "./persistedTypes";
 
 // interface IMapSerializationFormat {
 //     blobs?: string[];
@@ -136,6 +136,12 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
     private readonly honeycombs = new Set<string>();
 
     /**
+     * Keys that have been modified locally but not yet ack'd from the server.
+     */
+    private readonly pendingKeys: Map<string, number> = new Map();
+    private pendingClearCount = 0;
+
+    /**
      * Do not call the constructor. Instead, you should use the {@link SharedPartialMap.create | create method}.
      *
      * @param id - String identifier.
@@ -203,10 +209,39 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         return this.hashcache.has(key);
     }
 
+    private incrementLocalKeyCount(key: string): void {
+        this.adjustLocalKeyCount(key, true);
+    }
+
+    private decrementLocalKeyCount(key: string): void {
+        this.adjustLocalKeyCount(key, false);
+    }
+
+    private adjustLocalKeyCount(key: string, isIncrement: boolean): void {
+        let currentKeyCount = this.pendingKeys.get(key) ?? 0;
+        if (isIncrement) {
+            currentKeyCount++;
+        } else {
+            if (currentKeyCount === 0) {
+                return;
+            }
+
+            currentKeyCount--;
+        }
+        this.pendingKeys.set(key, currentKeyCount);
+    }
+
     /**
      * {@inheritDoc ISharedPartialMap.set}
      */
     public set(key: string, value: any): this {
+        this.incrementLocalKeyCount(key);
+        const op: SetOp = {
+            type: OpType.Set,
+            key,
+            value,
+        };
+        this.submitLocalMessage(op);
         this.hashcache.set(key, value);
         return this;
     }
@@ -217,13 +252,24 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
      * @returns True if the key existed and was deleted, false if it did not exist
      */
     public delete(key: string): boolean {
+        this.incrementLocalKeyCount(key);
+        const op: DeleteOp = {
+            type: OpType.Delete,
+            key,
+        };
+        this.submitLocalMessage(op);
         return this.hashcache.delete(key);
     }
 
     /**
      * Clear all data from the map.
      */
-    public RAID(): void {
+    public clear(): void {
+        this.pendingClearCount++;
+        const op: ClearOp = {
+            type: OpType.Clear,
+        };
+        this.submitLocalMessage(op);
         this.initializeBeeTree();
     }
 
@@ -301,7 +347,33 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
      * @internal
      */
     protected processCore(message: ISequencedDocumentMessage, local: boolean, localOpMetadata: unknown) {
-        throw new Error("Implement me");
+        const op = message.contents as PartialMapOp;
+
+        if (local) {
+            if (op.type === OpType.Clear) {
+                this.pendingClearCount--;
+            } else {
+                this.decrementLocalKeyCount(op.key);
+            }
+        } else {
+            if (this.pendingClearCount !== 0) {
+                switch (op.type) {
+                    case OpType.Set:
+                        if (!this.pendingKeys.has(op.key)) {
+                            this.hashcache.set(op.key, op.value);
+                        }
+                        break;
+                    case OpType.Delete:
+                        if (!this.pendingKeys.has(op.key)) {
+                            this.hashcache.delete(op.key);
+                        }
+                    case OpType.Clear:
+                        this.initializeBeeTree();
+                    default:
+                        throw new Error("Unsupported op type");
+                }
+            }
+        }
     }
 
     // /**

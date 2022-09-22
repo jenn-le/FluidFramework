@@ -29,3 +29,26 @@ export interface IDroneBee {
 }
 
 export type Honeycombs = string[];
+
+export enum OpType {
+    Set,
+    Delete,
+    Clear,
+}
+
+export type PartialMapOp = SetOp | DeleteOp | ClearOp;
+
+export interface SetOp {
+    type: OpType.Set;
+    key: string;
+    value: any;
+}
+
+export interface DeleteOp {
+    type: OpType.Delete;
+    key: string;
+}
+
+export interface ClearOp {
+    type: OpType.Clear;
+}
