@@ -23,6 +23,8 @@ import { BeeTree } from "./beeTree";
 import { IBeeTree, IHashcache, ISharedPartialMapEvents } from "./interfaces";
 import { Hashcache } from "./hashcache";
 import { ClearOp, DeleteOp, IHive, IQueenBee, OpType, PartialMapOp, SetOp } from "./persistedTypes";
+import { BeeTreeJSMap } from "./beeTreeTemp";
+import { readAndParse } from "@fluidframework/driver-utils";
 
 // interface IMapSerializationFormat {
 //     blobs?: string[];
@@ -83,17 +85,12 @@ export class PartialMapFactory implements IChannelFactory {
      * {@inheritDoc @fluidframework/datastore-definitions#IChannelFactory.create}
      */
     public create(runtime: IFluidDataStoreRuntime, id: string): SharedPartialMap {
-        const map = new SharedPartialMap(id, runtime, PartialMapFactory.Attributes);
-        map.initializeLocal();
-
-        return map;
+        return new SharedPartialMap(id, runtime, PartialMapFactory.Attributes);
     }
 }
 
-const initialQueen: IQueenBee = {
-    keys: [],
-    children: [],
-};
+// For Noah <3
+const ORDER = 32;
 
 /**
  * {@inheritDoc ISharedPartialMap}
@@ -138,7 +135,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
     /**
      * Keys that have been modified locally but not yet ack'd from the server.
      */
-    private readonly pendingKeys: Map<string, number> = new Map();
+    private pendingKeys: Map<string, number> = new Map();
     private pendingClearCount = 0;
 
     /**
@@ -154,11 +151,12 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         attributes: IChannelAttributes,
     ) {
         super(id, runtime, attributes, "fluid_map_");
-        this.initializeBeeTree();
+        this.initializePartialMap(new BeeTreeJSMap());
     }
 
-    private initializeBeeTree(): void {
-        this.beeTree = new BeeTree(initialQueen);
+    private initializePartialMap(beeTree: IBeeTree<any>): void {
+        // If GC uses a blacklist, we need to go through the previous beeTree and GC all the blobs
+        this.beeTree = beeTree;
         this.hashcache = new Hashcache();
 
         this.beeTree.on("handleAdded", (handle) => {
@@ -172,6 +170,8 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         });
 
         this.honeycombs.clear();
+
+        this.pendingKeys = new Map();
     }
 
     /**
@@ -270,7 +270,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
             type: OpType.Clear,
         };
         this.submitLocalMessage(op);
-        this.initializeBeeTree();
+        this.initializePartialMap(new BeeTreeJSMap());
     }
 
     /**
@@ -317,14 +317,16 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
      * @internal
      */
     protected async loadCore(storage: IChannelStorageService) {
-        throw new Error("Implement me");
+        const json = await readAndParse<object>(storage, snapshotFileName);
+        const hive = json as IHive;
+        this.initializePartialMap(await BeeTreeJSMap.create(hive.queen, this.serializer));
     }
 
     /**
      * {@inheritDoc @fluidframework/shared-object-base#SharedObject.onDisconnect}
      * @internal
      */
-    protected onDisconnect() { }
+     protected onDisconnect() { }
 
     /**
      * {@inheritDoc @fluidframework/shared-object-base#SharedObject.reSubmitCore}
@@ -368,7 +370,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
                             this.hashcache.delete(op.key);
                         }
                     case OpType.Clear:
-                        this.initializeBeeTree();
+                        this.initializePartialMap(new BeeTreeJSMap());
                     default:
                         throw new Error("Unsupported op type");
                 }
