@@ -8,7 +8,6 @@ import { IChannelAttributes } from '@fluidframework/datastore-definitions';
 import { IChannelFactory } from '@fluidframework/datastore-definitions';
 import { IChannelServices } from '@fluidframework/datastore-definitions';
 import { IChannelStorageService } from '@fluidframework/datastore-definitions';
-import { IEventThisPlaceHolder } from '@fluidframework/common-definitions';
 import { IFluidDataStoreRuntime } from '@fluidframework/datastore-definitions';
 import { IFluidSerializer } from '@fluidframework/shared-object-base';
 import { IGarbageCollectionData } from '@fluidframework/runtime-definitions';
@@ -45,6 +44,8 @@ export interface IBeeTree<T, THandle> {
     has(key: string): Promise<boolean>;
     // (undocumented)
     summarize(updates: Map<string, T>, deletes: Set<string>, uploadBlob: (data: any) => Promise<THandle>): Promise<IQueenBee<THandle>>;
+    // (undocumented)
+    summarizeSync(updates: Map<string, T>, deletes: Set<string>): IQueenBee<IDroneBee>;
 }
 
 // @public (undocumented)
@@ -93,8 +94,8 @@ export interface IQueenBee<THandle> {
 
 // @public
 export interface ISharedPartialMapEvents extends ISharedObjectEvents {
-    (event: "valueChanged", listener: (changed: IValueChanged, local: boolean, target: IEventThisPlaceHolder) => void): any;
-    (event: "clear", listener: (local: boolean, target: IEventThisPlaceHolder) => void): any;
+    (event: SharedPartialMapEvents.ValueChanged, listener: (changed: string) => void): any;
+    (event: SharedPartialMapEvents.Clear, listener: (local: boolean) => void): any;
 }
 
 // @public
@@ -182,6 +183,14 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
     summarize(fullTree?: boolean | undefined, trackState?: boolean | undefined, telemetryContext?: ITelemetryContext | undefined): Promise<ISummaryTreeWithStats>;
     // @internal (undocumented)
     protected summarizeCore(serializer: IFluidSerializer, telemetryContext?: ITelemetryContext): ISummaryTreeWithStats;
+}
+
+// @public (undocumented)
+export enum SharedPartialMapEvents {
+    // (undocumented)
+    Clear = "clear",
+    // (undocumented)
+    ValueChanged = "valueChanged"
 }
 
 ```
