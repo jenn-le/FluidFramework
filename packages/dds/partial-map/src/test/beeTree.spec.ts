@@ -55,4 +55,21 @@ describe("BeeTree", () => {
         await beeTree.delete("key");
         assert.equal(await beeTree.has("key"), false);
     });
+
+    it("can overwrite a single value", async () => {
+        const beeTree = mockBeeTree();
+        await beeTree.set("key", 42);
+        await beeTree.set("key", 43);
+        assert.equal(await beeTree.get("key"), 43);
+    });
+
+    it("can set many values", async () => {
+        const beeTree = mockBeeTree();
+        const values: number[] = [];
+        for (let i = 0; i < 100; i++) {
+            values.push(i);
+        }
+        await beeTree.set("key", 42);
+        assert.equal(await beeTree.get("key"), 42);
+    });
 });
