@@ -10,18 +10,14 @@ export interface IHive {
     readonly honeycombs: Honeycombs;
 }
 
-/**
- * Serialization format used for hydrating the bee tree
- */
 export interface IQueenBee {
     readonly order: number;
-    readonly keys: readonly string[];
-    readonly children: readonly ISerializedHandle[];
+    readonly root: ISerializedHandle;
 }
 
 export interface IWorkerBee {
     readonly keys: readonly string[];
-    readonly children: readonly (IWorkerBee | ISerializedHandle)[];
+    readonly children: readonly ISerializedHandle[];
 }
 
 export interface IDroneBee {
@@ -30,3 +26,26 @@ export interface IDroneBee {
 }
 
 export type Honeycombs = string[];
+
+export enum OpType {
+    Set,
+    Delete,
+    Clear,
+}
+
+export type PartialMapOp = SetOp | DeleteOp | ClearOp;
+
+export interface SetOp {
+    type: OpType.Set;
+    key: string;
+    value: any;
+}
+
+export interface DeleteOp {
+    type: OpType.Delete;
+    key: string;
+}
+
+export interface ClearOp {
+    type: OpType.Clear;
+}
