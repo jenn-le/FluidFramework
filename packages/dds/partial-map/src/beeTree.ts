@@ -54,7 +54,7 @@ export class BeeTree<T, THandle> implements IBeeTree<T, THandle>, IHandleProvide
     }
 
     public async delete(key: string): Promise<void> {
-        await this.root.delete(key);
+        this.root = await this.root.delete(key);
     }
 
 	public async summarize(updates: Map<string, T>, deletes: Set<string>): Promise<IQueenBee<THandle>> {
@@ -132,7 +132,7 @@ class BeeTreeNode<T, THandle> implements IBeeTreeNode<T, THandle> {
                 const childResult = await this.children[i].set(key, value);
                 if (Array.isArray(childResult)) {
                     // The child split in half
-                    const [childA, k, childB] = childResult; // TODO
+                    const [childA, k, childB] = childResult;
                     const keys = insert(this.keys, i, k);
                     const children = insert(remove(this.children, i), i, childA, childB);
                     if (keys.length >= this.order) {
@@ -149,6 +149,8 @@ class BeeTreeNode<T, THandle> implements IBeeTreeNode<T, THandle> {
                             new BeeTreeNode(keys2, children2, this.order, this.createHandle, this.resolveHandle),
                         ];
                     }
+
+                    return new BeeTreeNode(keys, children, this.order, this.createHandle, this.resolveHandle);
                 } else {
                     // Replace the child
                     const children = [...this.children];
@@ -219,7 +221,7 @@ class LeafyBeeTreeNode<T, THandle> implements IBeeTreeNode<T, THandle> {
         value: T,
     ): Promise<LeafyBeeTreeNode<T, THandle> | [LeafyBeeTreeNode<T, THandle>, string, LeafyBeeTreeNode<T, THandle>]> {
         for (let i = 0; i <= this.keys.length; i++) {
-            if (this.keys[i] === key[i]) {
+            if (this.keys[i] === key) {
                 // Already have a value for this key, so just clone ourselves but replace the value
                 const values = [...this.values.slice(0, i), value, ...this.values.slice(i + 1)];
                 return new LeafyBeeTreeNode(this.keys, values, this.order, this.createHandle, this.resolveHandle);
@@ -229,11 +231,11 @@ class LeafyBeeTreeNode<T, THandle> implements IBeeTreeNode<T, THandle> {
                 const values = insert(this.values, i, value);
                 if (keys.length >= this.order) {
                     // Split
-                    const keys2 = keys.splice(Math.floor(keys.length / 2), Math.ceil(keys.length / 2));
+                    const keys2 = keys.splice(Math.ceil(keys.length / 2), Math.floor(keys.length / 2));
                     const values2 = values.splice(Math.ceil(values.length / 2), Math.floor(values.length / 2));
                     return [
                         new LeafyBeeTreeNode(keys, values, this.order, this.createHandle, this.resolveHandle),
-                        keys2.splice(0, 1)[0],
+                        keys2[0],
                         new LeafyBeeTreeNode(keys2, values2, this.order, this.createHandle, this.resolveHandle),
                     ];
                 }
@@ -301,7 +303,7 @@ class LeafyBeeTreeNode<T, THandle> implements IBeeTreeNode<T, THandle> {
 // }
 
 function insert<T>(array: readonly T[], index: number, ...values: T[]): T[] {
-    return [...array.slice(0, index), ...values, ...array.slice(index + 1)];
+    return [...array.slice(0, index), ...values, ...array.slice(index)];
 }
 
 function remove<T>(array: readonly T[], index: number, count = 1): T[] {

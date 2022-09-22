@@ -73,6 +73,18 @@ describe("BeeTree", () => {
             assert.equal(await beeTree.get(key), key);
         }
     });
+
+    it("can delete many values", async () => {
+        const beeTree = mockBeeTree<string>();
+        for (const key of manyKeys) {
+            await beeTree.set(key, key);
+        }
+
+        for (const key of manyKeys) {
+            await beeTree.delete(key);
+            assert.equal(await beeTree.has(key), false);
+        }
+    });
 });
 
 // eslint-disable-next-line max-len
