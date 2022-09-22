@@ -36,9 +36,23 @@ function mockBeeTree<T>(order = 3): BeeTree<T, number> {
 }
 
 describe("BeeTree", () => {
-    it("can set and read a value", async () => {
+    it("can set and read a single value", async () => {
         const beeTree = mockBeeTree();
-        await beeTree.set("a", 42);
-        assert.equal(await beeTree.get("a"), 42);
+        await beeTree.set("key", 42);
+        assert.equal(await beeTree.get("key"), 42);
+    });
+
+    it("can has a single value", async () => {
+        const beeTree = mockBeeTree();
+        assert.equal(await beeTree.has("key"), false);
+        await beeTree.set("key", "cheezburger");
+        assert.equal(await beeTree.has("key"), true);
+    });
+
+    it("can delete a single value", async () => {
+        const beeTree = mockBeeTree();
+        await beeTree.set("key", 42);
+        await beeTree.delete("key");
+        assert.equal(await beeTree.has("key"), false);
     });
 });
