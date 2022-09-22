@@ -4,31 +4,19 @@
  * Licensed under the MIT License.
  */
 
-import { assert, TypedEventEmitter } from "@fluidframework/common-utils";
-import { ISerializedHandle } from "@fluidframework/shared-object-base";
-import { IBeeTree, IBeeTreeEvents, IHandleProvider } from "./interfaces";
+import { assert } from "@fluidframework/common-utils";
+import { IBeeTree, IHandleProvider } from "./interfaces";
 import { IDroneBee, IQueenBee, IWorkerBee } from "./persistedTypes";
 
-function assertResultAsync<TArgs extends unknown[], TResult, TAssertResult extends TResult>(
-    fn: (...args: TArgs) => Promise<TResult>,
-    ass: (ret: TResult) => asserts ret is TAssertResult,
-): (...args: TArgs) => Promise<TAssertResult> {
-    return async (...args: TArgs) => {
-        const ret = await fn(...args);
-        ass(ret);
-        return ret;
-    };
-}
-
-export class BeeTree<T> extends TypedEventEmitter<IBeeTreeEvents> implements IBeeTree<T>, IHandleProvider {
-    private root: IBeeTreeNode<T>;
+export class BeeTree<T, THandle> implements IBeeTree<T, THandle>, IHandleProvider {
+    private root: IBeeTreeNode<T, THandle>;
 
 	public constructor(
         order: number,
-        createHandle: (content: unknown) => Promise<ISerializedHandle>,
-        resolveHandle: (handle: ISerializedHandle) => Promise<IDroneBee | IWorkerBee>,
+        createHandle: (content: IDroneBee | IWorkerBee<THandle>) => Promise<THandle>,
+        resolveHandle: (handle: THandle) => Promise<IDroneBee | IWorkerBee<THandle>>,
     ) {
-        super();
+        assert(order >= 2, "Order out of bounds");
         this.root = new LeafyBeeTreeNode(
             [],
             [],
@@ -55,7 +43,10 @@ export class BeeTree<T> extends TypedEventEmitter<IBeeTreeEvents> implements IBe
                 [nodeA, nodeB],
                 this.root.order,
                 this.root.createHandle,
-                assertResultAsync(this.root.resolveHandle, (bee) => (bee as IWorkerBee).children !== undefined),
+                assertResultAsync(
+                    this.root.resolveHandle,
+                    (bee) => (bee as IWorkerBee<THandle>).children !== undefined,
+                ),
             );
         } else {
             this.root = result;
@@ -66,7 +57,7 @@ export class BeeTree<T> extends TypedEventEmitter<IBeeTreeEvents> implements IBe
         await this.root.delete(key);
     }
 
-	public async summarize(updates: Map<string, T>, deletes: Set<string>): Promise<IQueenBee> {
+	public async summarize(updates: Map<string, T>, deletes: Set<string>): Promise<IQueenBee<THandle>> {
 		for (const [key, value] of updates.entries()) {
             await this.set(key, value);
         }
@@ -86,25 +77,28 @@ export class BeeTree<T> extends TypedEventEmitter<IBeeTreeEvents> implements IBe
     }
 }
 
-interface IBeeTreeNode<T> {
+interface IBeeTreeNode<T, THandle> {
     readonly order: number;
     keys: readonly string[];
     has(key: string): Promise<boolean>;
     get(key: string): Promise<T | undefined>;
-    set(key: string, value: T): Promise<IBeeTreeNode<T> | [IBeeTreeNode<T>, string, IBeeTreeNode<T>]>;
-    delete(key: string): Promise<IBeeTreeNode<T>>; // "delet this"
-    upload(): Promise<ISerializedHandle>;
-    createHandle: (content: unknown) => Promise<ISerializedHandle>;
-    resolveHandle: (handle: ISerializedHandle) => Promise<IDroneBee | IWorkerBee>;
+    set(
+        key: string,
+        value: T,
+    ): Promise<IBeeTreeNode<T, THandle> | [IBeeTreeNode<T, THandle>, string, IBeeTreeNode<T, THandle>]>;
+    delete(key: string): Promise<IBeeTreeNode<T, THandle>>; // "delet this"
+    upload(): Promise<THandle>;
+    createHandle: (content: IDroneBee | IWorkerBee<THandle>) => Promise<THandle>;
+    resolveHandle: (handle: THandle) => Promise<IDroneBee | IWorkerBee<THandle>>;
 }
 
-class BeeTreeNode<T> implements IBeeTreeNode<T> {
+class BeeTreeNode<T, THandle> implements IBeeTreeNode<T, THandle> {
     public constructor(
         public readonly keys: readonly string[],
-        public readonly children: readonly IBeeTreeNode<T>[],
+        public readonly children: readonly IBeeTreeNode<T, THandle>[],
         public readonly order: number,
-        public readonly createHandle: (content: unknown) => Promise<ISerializedHandle>,
-        public readonly resolveHandle: (handle: ISerializedHandle) => Promise<IWorkerBee>,
+        public readonly createHandle: (content: IDroneBee | IWorkerBee<THandle>) => Promise<THandle>,
+        public readonly resolveHandle: (handle: THandle) => Promise<IWorkerBee<THandle>>,
     ) {
         assert(children.length >= 1, "Unexpected empty interior node");
         assert(keys.length === children.length - 1, "Must have exactly one more child than keys");
@@ -130,7 +124,9 @@ class BeeTreeNode<T> implements IBeeTreeNode<T> {
         throw new Error("Unreachable code");
     }
 
-    public async set(key: string, value: T): Promise<BeeTreeNode<T> | [BeeTreeNode<T>, string, BeeTreeNode<T>]> {
+    public async set(
+        key: string, value: T,
+    ): Promise<BeeTreeNode<T, THandle> | [BeeTreeNode<T, THandle>, string, BeeTreeNode<T, THandle>]> {
         for (let i = 0; i < this.children.length; i++) {
             if (i === this.keys.length || key < this.keys[i]) {
                 const childResult = await this.children[i].set(key, value);
@@ -165,7 +161,7 @@ class BeeTreeNode<T> implements IBeeTreeNode<T> {
         throw new Error("Unreachable code");
     }
 
-    public async delete(key: string): Promise<BeeTreeNode<T>> {
+    public async delete(key: string): Promise<BeeTreeNode<T, THandle>> {
         for (let i = 0; i < this.children.length; i++) {
             if (i === this.keys.length || key < this.keys[i]) {
                 const children = [...this.children];
@@ -177,8 +173,8 @@ class BeeTreeNode<T> implements IBeeTreeNode<T> {
         throw new Error("Unreachable code");
     }
 
-    public async upload(): Promise<ISerializedHandle> {
-        const worker: IWorkerBee = {
+    public async upload(): Promise<THandle> {
+        const worker: IWorkerBee<THandle> = {
             keys: this.keys,
             children: await Promise.all(this.children.map(async (c) => c.upload())),
         };
@@ -187,13 +183,13 @@ class BeeTreeNode<T> implements IBeeTreeNode<T> {
     }
 }
 
-class LeafyBeeTreeNode<T> implements IBeeTreeNode<T> {
+class LeafyBeeTreeNode<T, THandle> implements IBeeTreeNode<T, THandle> {
     public constructor(
         public readonly keys: readonly string[],
         public readonly values: readonly T[],
         public readonly order: number,
-        public readonly createHandle: (content: unknown) => Promise<ISerializedHandle>,
-        public readonly resolveHandle: (handle: ISerializedHandle) => Promise<IDroneBee>,
+        public readonly createHandle: (content: IDroneBee | IWorkerBee<THandle>) => Promise<THandle>,
+        public readonly resolveHandle: (handle: THandle) => Promise<IDroneBee>,
     ) {
         assert(keys.length === values.length, "Invalid keys or values");
     }
@@ -221,7 +217,7 @@ class LeafyBeeTreeNode<T> implements IBeeTreeNode<T> {
     public async set(
         key: string,
         value: T,
-    ): Promise<LeafyBeeTreeNode<T> | [LeafyBeeTreeNode<T>, string, LeafyBeeTreeNode<T>]> {
+    ): Promise<LeafyBeeTreeNode<T, THandle> | [LeafyBeeTreeNode<T, THandle>, string, LeafyBeeTreeNode<T, THandle>]> {
         for (let i = 0; i <= this.keys.length; i++) {
             if (this.keys[i] === key[i]) {
                 // Already have a value for this key, so just clone ourselves but replace the value
@@ -248,7 +244,7 @@ class LeafyBeeTreeNode<T> implements IBeeTreeNode<T> {
         throw new Error("Unreachable code");
     }
 
-    public async delete(key: string): Promise<LeafyBeeTreeNode<T>> {
+    public async delete(key: string): Promise<LeafyBeeTreeNode<T, THandle>> {
         for (let i = 0; i <= this.keys.length; i++) {
             if (this.keys[i] === key) {
                 const keys = remove(this.keys, i);
@@ -260,7 +256,7 @@ class LeafyBeeTreeNode<T> implements IBeeTreeNode<T> {
         return this;
     }
 
-    public async upload(): Promise<ISerializedHandle> {
+    public async upload(): Promise<THandle> {
         const drone: IDroneBee = {
             keys: this.keys,
             values: this.values,
@@ -310,4 +306,18 @@ function insert<T>(array: readonly T[], index: number, ...values: T[]): T[] {
 
 function remove<T>(array: readonly T[], index: number, count = 1): T[] {
     return [...array.slice(0, index), ...array.slice(index + count)];
+}
+
+/**
+ * Convert an async function to one with a narrower return type
+ */
+ function assertResultAsync<TArgs extends unknown[], TResult, TAssertResult extends TResult>(
+    fn: (...args: TArgs) => Promise<TResult>,
+    ass: (ret: TResult) => asserts ret is TAssertResult,
+): (...args: TArgs) => Promise<TAssertResult> {
+    return async (...args: TArgs) => {
+        const ret = await fn(...args);
+        ass(ret);
+        return ret;
+    };
 }

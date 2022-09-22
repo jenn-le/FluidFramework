@@ -6,18 +6,18 @@
 import { ISerializedHandle } from "@fluidframework/shared-object-base";
 
 export interface IHive {
-    readonly queen: IQueenBee;
+    readonly queen: IQueenBee<ISerializedHandle>;
     readonly honeycombs: Honeycombs;
 }
 
-export interface IQueenBee {
+export interface IQueenBee<THandle> {
     readonly order: number;
-    readonly root: ISerializedHandle;
+    readonly root: THandle;
 }
 
-export interface IWorkerBee {
+export interface IWorkerBee<THandle> {
     readonly keys: readonly string[];
-    readonly children: readonly ISerializedHandle[];
+    readonly children: readonly THandle[];
 }
 
 export interface IDroneBee {

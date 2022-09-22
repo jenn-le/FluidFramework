@@ -3,10 +3,9 @@
  * Licensed under the MIT License.
  */
 
-import { IEvent, IEventProvider, IEventThisPlaceHolder } from "@fluidframework/common-definitions";
-import { IFluidHandle } from "@fluidframework/core-interfaces";
+import { IEventThisPlaceHolder } from "@fluidframework/common-definitions";
 import { Serializable } from "@fluidframework/datastore-definitions";
-import { ISharedObjectEvents } from "@fluidframework/shared-object-base";
+import { ISerializedHandle, ISharedObjectEvents } from "@fluidframework/shared-object-base";
 import { IQueenBee } from "./persistedTypes";
 
 /**
@@ -57,18 +56,13 @@ import { IQueenBee } from "./persistedTypes";
         local: boolean,
         target: IEventThisPlaceHolder) => void);
 }
-
-export interface IBeeTreeEvents extends IEvent {
-    (event: "handleAdded" | "handleRemoved", listener: (handle: IFluidHandle) => void): void;
-}
-
 /**
  * TODO doc
  */
-export interface IBeeTree<T> extends IEventProvider<IBeeTreeEvents> {
+export interface IBeeTree<T, THandle> {
     get(key: string): Promise<T | undefined>;
     has(key: string): Promise<boolean>;
-    summarize(updates: Map<string, T>, deletes: Set<string>): Promise<IQueenBee>;
+    summarize(updates: Map<string, T>, deletes: Set<string>): Promise<IQueenBee<THandle>>;
 }
 
 export interface IHandleProvider {
