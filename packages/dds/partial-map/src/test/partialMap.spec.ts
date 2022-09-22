@@ -14,6 +14,7 @@ import {
     MockStorage,
 } from "@fluidframework/test-runtime-utils";
 import { SharedPartialMap, PartialMapFactory } from "../partialMap";
+import { IValueChanged } from "../interfaces";
 
 function createConnectedMap(id: string, runtimeFactory: MockContainerRuntimeFactory): SharedPartialMap {
     const dataStoreRuntime = new MockFluidDataStoreRuntime();
@@ -318,7 +319,7 @@ describe("PartialMap", () => {
                     assert.equal(retrievedSubMap2, subMap2, "could not get nested map 2");
                 });
 
-                it("Shouldn't clear value if there is pending set", () => {
+                it("Shouldn't clear value if there is pending set", async () => {
                     const valuesChanged: IValueChanged[] = [];
                     let clearCount = 0;
 
@@ -345,7 +346,7 @@ describe("PartialMap", () => {
                     assert.equal(valuesChanged[2].previousValue, undefined);
                     assert.equal(clearCount, 1);
                     assert.equal(map1.size, 1);
-                    assert.equal(map1.get("map1Key"), "value1");
+                    assert.equal(await map1.get("map1Key"), "value1");
 
                     containerRuntimeFactory.processSomeMessages(2);
 
@@ -354,7 +355,7 @@ describe("PartialMap", () => {
                     assert.equal(map1.size, 0);
                 });
 
-                it("Shouldn't overwrite value if there is pending set", () => {
+                it("Shouldn't overwrite value if there is pending set", async () => {
                     const value1 = "value1";
                     const pending1 = "pending1";
                     const pending2 = "pending2";
@@ -365,25 +366,25 @@ describe("PartialMap", () => {
                     containerRuntimeFactory.processSomeMessages(1);
 
                     // Verify the SharedPartialMap with processed message
-                    assert.equal(map1.has("test"), true, "could not find the set key");
-                    assert.equal(map1.get("test"), value1, "could not get the set key");
+                    assert.equal(await map1.has("test"), true, "could not find the set key");
+                    assert.equal(await map1.get("test"), value1, "could not get the set key");
 
                     // Verify the SharedPartialMap with 2 pending messages
-                    assert.equal(map2.has("test"), true, "could not find the set key in pending map");
-                    assert.equal(map2.get("test"), pending2, "could not get the set key from pending map");
+                    assert.equal(await map2.has("test"), true, "could not find the set key in pending map");
+                    assert.equal(await map2.get("test"), pending2, "could not get the set key from pending map");
 
                     containerRuntimeFactory.processSomeMessages(1);
 
                     // Verify the SharedPartialMap gets updated from remote
-                    assert.equal(map1.has("test"), true, "could not find the set key");
-                    assert.equal(map1.get("test"), pending1, "could not get the set key");
+                    assert.equal(await map1.has("test"), true, "could not find the set key");
+                    assert.equal(await map1.get("test"), pending1, "could not get the set key");
 
                     // Verify the SharedPartialMap with 1 pending message
-                    assert.equal(map2.has("test"), true, "could not find the set key in pending map");
-                    assert.equal(map2.get("test"), pending2, "could not get the set key from pending map");
+                    assert.equal(await map2.has("test"), true, "could not find the set key in pending map");
+                    assert.equal(await map2.get("test"), pending2, "could not get the set key from pending map");
                 });
 
-                it("Shouldn't set values when pending clear", () => {
+                it("Shouldn't set values when pending clear", async () => {
                     const key = "test";
                     map1.set(key, "map1value1");
                     map2.set(key, "map2value2");
@@ -395,60 +396,60 @@ describe("PartialMap", () => {
                     containerRuntimeFactory.processSomeMessages(1);
 
                     // Verify the SharedPartialMap with processed message
-                    assert.equal(map1.has("test"), true, "could not find the set key");
-                    assert.equal(map1.get("test"), "map1value1", "could not get the set key");
+                    assert.equal(await map1.has("test"), true, "could not find the set key");
+                    assert.equal(await map1.get("test"), "map1value1", "could not get the set key");
 
                     // Verify the SharedPartialMap with 2 pending clears
-                    assert.equal(map2.has("test"), false, "found the set key in pending map");
+                    assert.equal(await map2.has("test"), false, "found the set key in pending map");
 
                     // map2.set(key, "map2value2");
                     containerRuntimeFactory.processSomeMessages(1);
 
                     // Verify the SharedPartialMap gets updated from remote
-                    assert.equal(map1.has("test"), true, "could not find the set key");
-                    assert.equal(map1.get("test"), "map2value2", "could not get the set key");
+                    assert.equal(await ap1.has("test"), true, "could not find the set key");
+                    assert.equal(await ap1.get("test"), "map2value2", "could not get the set key");
 
                     // Verify the SharedPartialMap with 2 pending clears
-                    assert.equal(map2.has("test"), false, "found the set key in pending map");
+                    assert.equal(await map2.has("test"), false, "found the set key in pending map");
 
                     // map2.clear();
                     containerRuntimeFactory.processSomeMessages(1);
 
                     // Verify the SharedPartialMap gets updated from remote clear
-                    assert.equal(map1.has("test"), false, "found the set key");
+                    assert.equal(await map1.has("test"), false, "found the set key");
 
                     // Verify the SharedPartialMap with 1 pending clear
-                    assert.equal(map2.has("test"), false, "found the set key in pending map");
+                    assert.equal(await map2.has("test"), false, "found the set key in pending map");
 
                     // map2.set(key, "map2value3");
                     containerRuntimeFactory.processSomeMessages(1);
 
                     // Verify the SharedPartialMap gets updated from remote
-                    assert.equal(map1.has("test"), true, "could not find the set key");
-                    assert.equal(map1.get("test"), "map2value3", "could not get the set key");
+                    assert.equal(await map1.has("test"), true, "could not find the set key");
+                    assert.equal(await map1.get("test"), "map2value3", "could not get the set key");
 
                     // Verify the SharedPartialMap with 1 pending clear
-                    assert.equal(map2.has("test"), false, "found the set key in pending map");
+                    assert.equal(await map2.has("test"), false, "found the set key in pending map");
 
                     // map2.clear();
                     containerRuntimeFactory.processSomeMessages(1);
 
                     // Verify the SharedPartialMap gets updated from remote clear
-                    assert.equal(map1.has("test"), false, "found the set key");
+                    assert.equal(await map1.has("test"), false, "found the set key");
 
                     // Verify the SharedPartialMap with no more pending clear
-                    assert.equal(map2.has("test"), false, "found the set key in pending map");
+                    assert.equal(await map2.has("test"), false, "found the set key in pending map");
 
                     map1.set(key, "map1value4");
                     containerRuntimeFactory.processSomeMessages(1);
 
                     // Verify the SharedPartialMap gets updated from local
-                    assert.equal(map1.has("test"), true, "could not find the set key");
-                    assert.equal(map1.get("test"), "map1value4", "could not get the set key");
+                    assert.equal(await map1.has("test"), true, "could not find the set key");
+                    assert.equal(await map1.get("test"), "map1value4", "could not get the set key");
 
                     // Verify the SharedPartialMap gets updated from remote
-                    assert.equal(map1.has("test"), true, "could not find the set key");
-                    assert.equal(map1.get("test"), "map1value4", "could not get the set key");
+                    assert.equal(await map1.has("test"), true, "could not find the set key");
+                    assert.equal(await map1.get("test"), "map1value4", "could not get the set key");
                 });
             });
 
@@ -458,12 +459,12 @@ describe("PartialMap", () => {
                     map1.set("testKey2", "testValue2");
                     map1.delete("testKey");
                     map1.delete("testKey2");
-                    assert.equal(map1.has("testKey"), false, "could not delete key 1");
-                    assert.equal(map1.has("testKey2"), false, "could not delete key 2");
+                    assert.equal(await map1.has("testKey"), false, "could not delete key 1");
+                    assert.equal(await map1.has("testKey2"), false, "could not delete key 2");
                     map1.set("testKey", "testValue");
                     map1.set("testKey2", "testValue2");
-                    assert.equal(map1.get("testKey"), "testValue", "could not retrieve set key 1 after delete");
-                    assert.equal(map1.get("testKey2"), "testValue2", "could not retrieve set key 2 after delete");
+                    assert.equal(await map1.get("testKey"), "testValue", "could not retrieve set key 1 after delete");
+                    assert.equal(await map1.get("testKey2"), "testValue2", "could not retrieve set key 2 after delete");
                 });
             });
         });

@@ -10,18 +10,14 @@ export interface IHive {
     readonly honeycombs: Honeycombs;
 }
 
-/**
- * Serialization format used for hydrating the bee tree
- */
 export interface IQueenBee {
     readonly order: number;
-    readonly keys: readonly string[];
-    readonly children: readonly ISerializedHandle[];
+    readonly root: ISerializedHandle;
 }
 
 export interface IWorkerBee {
     readonly keys: readonly string[];
-    readonly children: readonly (IWorkerBee | ISerializedHandle)[];
+    readonly children: readonly ISerializedHandle[];
 }
 
 export interface IDroneBee {
