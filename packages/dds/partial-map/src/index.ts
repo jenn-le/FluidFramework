@@ -15,7 +15,6 @@
  * @packageDocumentation
  */
 
+export * from "./partialMap";
 export * from "./interfaces";
-export * from "./map";
-export * from "./directory";
-export { LocalValueMaker, ILocalValue } from "./localValues";
+export * from "./persistedTypes";

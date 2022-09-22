@@ -3,6 +3,7 @@
  * Licensed under the MIT License.
  */
 
+import { fail } from "assert";
 import { ISequencedDocumentMessage } from "@fluidframework/protocol-definitions";
 import {
     IChannelAttributes,
@@ -20,6 +21,7 @@ import {
     SharedObject,
 } from "@fluidframework/shared-object-base";
 import { readAndParse } from "@fluidframework/driver-utils";
+import { IsoBuffer } from "@fluidframework/common-utils";
 import { pkgVersion } from "./packageVersion";
 import { IBeeTree, IHashcache, ISharedPartialMapEvents } from "./interfaces";
 import { Hashcache } from "./hashcache";
@@ -90,10 +92,10 @@ export class PartialMapFactory implements IChannelFactory {
 }
 
 // For Noah <3
-const ORDER = 32;
+// const ORDER = 32;
 
 /**
- * {@inheritDoc ISharedPartialMap}
+ *
  */
 export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
     /**
@@ -158,19 +160,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         // If GC uses a blacklist, we need to go through the previous beeTree and GC all the blobs
         this.beeTree = beeTree;
         this.hashcache = new Hashcache();
-
-        this.beeTree.on("handleAdded", (handle) => {
-            // TODO do we need to do anything?
-            this.honeycombs.add(handle.absolutePath);
-        });
-
-        this.beeTree.on("handleRemoved", (handle) => {
-            // TODO should we still use this for GC?
-            this.honeycombs.delete(handle.absolutePath);
-        });
-
         this.honeycombs.clear();
-
         this.pendingKeys = new Map();
     }
 
@@ -183,7 +173,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
     }
 
     /**
-     * {@inheritDoc ISharedPartialMap.get}
+     *
      */
     public async get<T = Serializable>(key: string): Promise<T | undefined> {
         if (!this.hashcache.has(key)) {
@@ -232,7 +222,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
     }
 
     /**
-     * {@inheritDoc ISharedPartialMap.set}
+     *
      */
     public set(key: string, value: any): this {
         this.incrementLocalKeyCount(key);
@@ -298,7 +288,19 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         telemetryContext?: ITelemetryContext | undefined,
     ): Promise<ISummaryTreeWithStats> {
         const [updates, deletes] = this.hashcache.flushUpdates();
-        const queen = await this.beeTree.summarize(updates, deletes);
+        const queen = await this.beeTree.summarize(
+            updates,
+            deletes,
+            async (data: any) => {
+                const serializedContents = this.serializer.encode(data, this.handle);
+                const buffer = IsoBuffer.from(serializedContents);
+                const editHandle = await this.runtime.uploadBlob(buffer);
+                const serialized: ISerializedHandle = this.serializer.encode(editHandle, this.handle) ??
+                    fail("Edit chunk handle could not be serialized.");
+
+                return serialized;
+            },
+        );
 
         const hive: IHive = {
             queen,

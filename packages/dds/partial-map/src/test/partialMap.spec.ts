@@ -5,7 +5,6 @@
 
 import { strict as assert } from "assert";
 import { IFluidHandle } from "@fluidframework/core-interfaces";
-import { ISummaryBlob } from "@fluidframework/protocol-definitions";
 import { IGCTestProvider, runGCTests } from "@fluid-internal/test-dds-utils";
 import {
     MockFluidDataStoreRuntime,
@@ -25,21 +24,19 @@ function createConnectedMap(id: string, runtimeFactory: MockContainerRuntimeFact
     };
     const map = new SharedPartialMap(id, dataStoreRuntime, PartialMapFactory.Attributes);
     map.connect(services);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
     return map;
 }
 
 function createLocalMap(id: string): SharedPartialMap {
     const map = new SharedPartialMap(id, new MockFluidDataStoreRuntime(), PartialMapFactory.Attributes);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
     return map;
 }
 
-class TestSharedPartialMap extends SharedPartialMap {
-    // public testApplyStashedOp(content: any): MapLocalOpMetadata {
-    //     return this.applyStashedOp(content) as MapLocalOpMetadata;
-    // }
-}
+// class TestSharedPartialMap extends SharedPartialMap {
+//     public testApplyStashedOp(content: any): MapLocalOpMetadata {
+//         return this.applyStashedOp(content) as MapLocalOpMetadata;
+//     }
+// }
 
 describe("PartialMap", () => {
     describe("Local state", () => {
@@ -406,8 +403,8 @@ describe("PartialMap", () => {
                     containerRuntimeFactory.processSomeMessages(1);
 
                     // Verify the SharedPartialMap gets updated from remote
-                    assert.equal(await ap1.has("test"), true, "could not find the set key");
-                    assert.equal(await ap1.get("test"), "map2value2", "could not get the set key");
+                    assert.equal(await map1.has("test"), true, "could not find the set key");
+                    assert.equal(await map1.get("test"), "map2value2", "could not get the set key");
 
                     // Verify the SharedPartialMap with 2 pending clears
                     assert.equal(await map2.has("test"), false, "found the set key in pending map");

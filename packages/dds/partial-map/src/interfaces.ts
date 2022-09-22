@@ -5,7 +5,7 @@
 
 import { IEventThisPlaceHolder } from "@fluidframework/common-definitions";
 import { Serializable } from "@fluidframework/datastore-definitions";
-import { ISerializedHandle, ISharedObjectEvents } from "@fluidframework/shared-object-base";
+import { ISharedObjectEvents } from "@fluidframework/shared-object-base";
 import { IQueenBee } from "./persistedTypes";
 
 /**
@@ -24,7 +24,7 @@ import { IQueenBee } from "./persistedTypes";
 }
 
 /**
- * Events emitted in response to changes to the {@link ISharedMap | map} data.
+ * Events emitted in response to changes to the  data.
  */
  export interface ISharedPartialMapEvents extends ISharedObjectEvents {
     /**
@@ -36,7 +36,7 @@ import { IQueenBee } from "./persistedTypes";
      *
      * - `local` - Whether the change originated from this client.
      *
-     * - `target` - The {@link ISharedMap} itself.
+     * - `target` - The  itself.
      */
     (event: "valueChanged", listener: (
         changed: IValueChanged,
@@ -50,7 +50,7 @@ import { IQueenBee } from "./persistedTypes";
      *
      * - `local` - Whether the clear originated from this client.
      *
-     * - `target` - The {@link ISharedMap} itself.
+     * - `target` -  itself.
      */
     (event: "clear", listener: (
         local: boolean,
@@ -62,7 +62,11 @@ import { IQueenBee } from "./persistedTypes";
 export interface IBeeTree<T, THandle> {
     get(key: string): Promise<T | undefined>;
     has(key: string): Promise<boolean>;
-    summarize(updates: Map<string, T>, deletes: Set<string>): Promise<IQueenBee<THandle>>;
+    summarize(
+        updates: Map<string, T>,
+        deletes: Set<string>,
+        uploadBlob: (data: any) => Promise<THandle>,
+    ): Promise<IQueenBee<THandle>>;
 }
 
 export interface IHandleProvider {
