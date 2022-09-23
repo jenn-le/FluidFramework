@@ -62,27 +62,23 @@ describe("PartialMap", () => {
                 const dummyMap = map;
                 let valueChangedExpected = true;
                 let clearExpected = false;
-                let previousValue: any;
 
                 dummyMap.on("op", (arg1, arg2, arg3) => {
                     assert.fail("shouldn't receive an op event");
                 });
-                dummyMap.on("valueChanged", (changed, local, target) => {
+                dummyMap.on("valueChanged", (changed, local) => {
                     assert.equal(valueChangedExpected, true, "valueChange event not expected");
                     valueChangedExpected = false;
 
-                    assert.equal(changed.key, "marco");
-                    assert.equal(changed.previousValue, previousValue);
+                    assert.equal(changed, "marco");
 
                     assert.equal(local, true, "local should be true for local action for valueChanged event");
-                    assert.equal(target, dummyMap, "target should be the map for valueChanged event");
                 });
-                dummyMap.on("clear", (local, target) => {
+                dummyMap.on("clear", (local) => {
                     assert.equal(clearExpected, true, "clear event not expected");
                     clearExpected = false;
 
                     assert.equal(local, true, "local should be true for local action  for clear event");
-                    assert.equal(target, dummyMap, "target should be the map for clear event");
                 });
                 dummyMap.on("error", (error) => {
                     // propagate error in the event handlers
@@ -90,12 +86,10 @@ describe("PartialMap", () => {
                 });
 
                 // Test set
-                previousValue = undefined;
                 dummyMap.set("marco", "polo");
                 assert.equal(valueChangedExpected, false, "missing valueChanged event");
 
                 // Test delete
-                previousValue = "polo";
                 valueChangedExpected = true;
                 dummyMap.delete("marco");
                 assert.equal(valueChangedExpected, false, "missing valueChanged event");
@@ -176,8 +170,8 @@ describe("PartialMap", () => {
                 containerRuntimeFactory.processAllMessages();
 
                 // Verify that both the maps have the new value.
-                assert.equal(map1.get(key), newValue, "The first map did not get the new value");
-                assert.equal(map2.get(key), newValue, "The second map did not get the new value");
+                assert.equal(await map1.get(key), newValue, "The first map did not get the new value");
+                assert.equal(await map2.get(key), newValue, "The second map did not get the new value");
             });
 
             // it("metadata op", async () => {
@@ -275,7 +269,7 @@ describe("PartialMap", () => {
                     assert.equal(await map2.get("test"), value, "could not get the set key from remote map");
                 });
 
-                it("Should be able to set a shared object handle as a key", async () => {
+                it("Should be able to set a shared object handle as a value", async () => {
                     const subMap = createLocalMap("subMap");
                     map1.set("test", subMap.handle);
 
@@ -320,10 +314,10 @@ describe("PartialMap", () => {
                     const valuesChanged: IValueChanged[] = [];
                     let clearCount = 0;
 
-                    map1.on("valueChanged", (changed, local, target) => {
+                    map1.on("valueChanged", (changed) => {
                         valuesChanged.push(changed);
                     });
-                    map1.on("clear", (local, target) => {
+                    map1.on("clear", () => {
                         clearCount++;
                     });
 
@@ -336,11 +330,8 @@ describe("PartialMap", () => {
 
                     assert.equal(valuesChanged.length, 3);
                     assert.equal(valuesChanged[0].key, "map1Key");
-                    assert.equal(valuesChanged[0].previousValue, undefined);
                     assert.equal(valuesChanged[1].key, "map2key");
-                    assert.equal(valuesChanged[1].previousValue, undefined);
                     assert.equal(valuesChanged[2].key, "map1Key");
-                    assert.equal(valuesChanged[2].previousValue, undefined);
                     assert.equal(clearCount, 1);
                     assert.equal(map1.size, 1);
                     assert.equal(await map1.get("map1Key"), "value1");

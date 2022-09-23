@@ -4,20 +4,29 @@
  */
 
 import { assert } from "@fluidframework/common-utils";
-import { IFluidSerializer, ISerializedHandle } from "@fluidframework/shared-object-base";
+import { IFluidSerializer, ISerializedHandle, isSerializedHandle } from "@fluidframework/shared-object-base";
 import { IBeeTree } from "./interfaces";
 import { IDroneBee, IQueenBee } from "./persistedTypes";
 
 export class BeeTreeJSMap<T, THandle = ISerializedHandle> implements IBeeTree<T, THandle> {
 	public static async create<T, THandle = ISerializedHandle>(
-        queen: IQueenBee<ISerializedHandle>,
+        queen: IQueenBee<ISerializedHandle | IDroneBee>,
         serializer: IFluidSerializer,
     ): Promise<BeeTreeJSMap<T, THandle>> {
-        const deserializedHandle = serializer.parse(String(queen.root));
-		assert(typeof deserializedHandle === "object", "Deserialization of root handle failed");
+        let drone: IDroneBee;
+
+        if (isSerializedHandle(queen.root)) {
+            const deserializedHandle = serializer.parse(String(queen.root));
+            assert(typeof deserializedHandle === "object", "Deserialization of root handle failed");
+            drone = await deserializedHandle.get() as IDroneBee;
+        } else {
+            drone = queen.root;
+        }
+
+        const keys = drone.keys;
+        const values = drone.values;
 
         const beeTree = new BeeTreeJSMap<T, THandle>();
-        const { keys, values } = await deserializedHandle.get() as IDroneBee;
 
         assert(keys.length === values.length, "Keys and values must correspond to each other");
 
@@ -60,6 +69,31 @@ export class BeeTreeJSMap<T, THandle = ISerializedHandle> implements IBeeTree<T,
             order: 32,
             root: await uploadBlob(drone),
         };
+        return queen;
+	}
+
+    public summarizeSync(
+        updates: Map<string, T>,
+        deletes: Set<string>,
+    ): IQueenBee<IDroneBee> {
+		for (const [key, value] of updates.entries()) {
+			this.map.set(key, value);
+        }
+
+        for (const key of deletes.keys()) {
+            this.map.delete(key);
+        }
+
+		const drone: IDroneBee = {
+            keys: Array.from(this.map.keys()),
+            values: Array.from(this.map.values()),
+        };
+
+        const queen: IQueenBee<IDroneBee> = {
+            order: 32,
+            root: drone,
+        };
+
         return queen;
 	}
 }

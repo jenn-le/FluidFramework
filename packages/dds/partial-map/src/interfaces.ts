@@ -3,10 +3,9 @@
  * Licensed under the MIT License.
  */
 
-import { IEventThisPlaceHolder } from "@fluidframework/common-definitions";
 import { Serializable } from "@fluidframework/datastore-definitions";
 import { ISharedObjectEvents } from "@fluidframework/shared-object-base";
-import { IQueenBee } from "./persistedTypes";
+import { IDroneBee, IQueenBee } from "./persistedTypes";
 
 /**
  * Type of "valueChanged" event parameter.
@@ -21,6 +20,11 @@ import { IQueenBee } from "./persistedTypes";
      * The value that was stored at the key prior to the change.
      */
     previousValue: any;
+}
+
+export enum SharedPartialMapEvents {
+    ValueChanged = "valueChanged",
+    Clear = "clear",
 }
 
 /**
@@ -38,10 +42,7 @@ import { IQueenBee } from "./persistedTypes";
      *
      * - `target` - The  itself.
      */
-    (event: "valueChanged", listener: (
-        changed: IValueChanged,
-        local: boolean,
-        target: IEventThisPlaceHolder) => void);
+    (event: SharedPartialMapEvents.ValueChanged, listener: (changed: string) => void);
 
     /**
      * Emitted when the map is cleared.
@@ -52,9 +53,7 @@ import { IQueenBee } from "./persistedTypes";
      *
      * - `target` -  itself.
      */
-    (event: "clear", listener: (
-        local: boolean,
-        target: IEventThisPlaceHolder) => void);
+    (event: SharedPartialMapEvents.Clear, listener: (local: boolean) => void);
 }
 /**
  * TODO doc
@@ -67,6 +66,10 @@ export interface IBeeTree<T, THandle> {
         deletes: Set<string>,
         uploadBlob: (data: any) => Promise<THandle>,
     ): Promise<IQueenBee<THandle>>;
+    summarizeSync(
+        updates: Map<string, T>,
+        deletes: Set<string>,
+    ): IQueenBee<IDroneBee>;
 }
 
 export interface IHandleProvider {

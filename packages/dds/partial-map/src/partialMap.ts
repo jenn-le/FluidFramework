@@ -23,7 +23,7 @@ import {
 import { readAndParse } from "@fluidframework/driver-utils";
 import { IsoBuffer } from "@fluidframework/common-utils";
 import { pkgVersion } from "./packageVersion";
-import { IBeeTree, IHashcache, ISharedPartialMapEvents } from "./interfaces";
+import { IBeeTree, IHashcache, ISharedPartialMapEvents, SharedPartialMapEvents } from "./interfaces";
 import { Hashcache } from "./hashcache";
 import { ClearOp, DeleteOp, IHive, OpType, PartialMapOp, SetOp } from "./persistedTypes";
 import { BeeTreeJSMap } from "./beeTreeTemp";
@@ -137,7 +137,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
     /**
      * Keys that have been modified locally but not yet ack'd from the server.
      */
-    private pendingKeys: Map<string, number> = new Map();
+    private readonly pendingKeys: Map<string, number> = new Map();
     private pendingClearCount = 0;
 
     /**
@@ -161,7 +161,6 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         this.beeTree = beeTree;
         this.hashcache = new Hashcache();
         this.honeycombs.clear();
-        this.pendingKeys = new Map();
     }
 
     /**
@@ -211,28 +210,49 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         let currentKeyCount = this.pendingKeys.get(key) ?? 0;
         if (isIncrement) {
             currentKeyCount++;
+            this.pendingKeys.set(key, currentKeyCount);
         } else {
             if (currentKeyCount === 0) {
-                return;
+                fail("bad");
             }
 
             currentKeyCount--;
+
+            if (currentKeyCount === 0) {
+                this.pendingKeys.delete(key);
+            } else {
+                this.pendingKeys.set(key, currentKeyCount);
+            }
         }
-        this.pendingKeys.set(key, currentKeyCount);
     }
 
     /**
      *
      */
     public set(key: string, value: any): this {
+        // Undefined/null keys can't be serialized to JSON in the manner we currently snapshot.
+        if (key === undefined || key === null) {
+            throw new Error("Undefined and null keys are not supported");
+        }
+
+        this.hashcache.set(key, value);
+        this.emit(SharedPartialMapEvents.ValueChanged, key, true);
+
+        // If we are not attached, don't submit the op.
+        if (!this.isAttached()) {
+            return this;
+        }
+
         this.incrementLocalKeyCount(key);
+        const opValue = this.serializer.encode(
+            value,
+            this.handle);
         const op: SetOp = {
             type: OpType.Set,
             key,
-            value,
+            value: opValue,
         };
         this.submitLocalMessage(op);
-        this.hashcache.set(key, value);
         return this;
     }
 
@@ -242,25 +262,40 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
      * @returns True if the key existed and was deleted, false if it did not exist
      */
     public delete(key: string): boolean {
+        const result = this.hashcache.delete(key);
+        this.emit(SharedPartialMapEvents.ValueChanged, key, true);
+
+        // If we are not attached, don't submit the op.
+        if (!this.isAttached()) {
+            return result;
+        }
+
         this.incrementLocalKeyCount(key);
         const op: DeleteOp = {
             type: OpType.Delete,
             key,
         };
         this.submitLocalMessage(op);
-        return this.hashcache.delete(key);
+        return result;
     }
 
     /**
      * Clear all data from the map.
      */
     public clear(): void {
+        this.initializePartialMap(new BeeTreeJSMap());
+        this.emit(SharedPartialMapEvents.Clear, true);
+
+        // If we are not attached, don't submit the op.
+        if (!this.isAttached()) {
+            return;
+        }
+
         this.pendingClearCount++;
         const op: ClearOp = {
             type: OpType.Clear,
         };
         this.submitLocalMessage(op);
-        this.initializePartialMap(new BeeTreeJSMap());
     }
 
     /**
@@ -279,7 +314,15 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         trackState?: boolean | undefined,
         telemetryContext?: ITelemetryContext | undefined,
     ): ISummaryTreeWithStats {
-        throw new Error("implement me pls");
+        const [updates, deletes] = this.hashcache.flushUpdates();
+        const queen = this.beeTree.summarizeSync(updates, deletes);
+
+        const hive = {
+            queen,
+            honeycombs: Array.from(this.honeycombs.values()),
+        };
+
+        return createSingleBlobSummary(snapshotFileName, this.serializer.stringify(hive, this.handle));
     }
 
     override async summarize(
@@ -360,19 +403,32 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
                 this.decrementLocalKeyCount(op.key);
             }
         } else {
-            if (this.pendingClearCount !== 0) {
+            if (this.pendingClearCount === 0) {
                 switch (op.type) {
                     case OpType.Set:
                         if (!this.pendingKeys.has(op.key)) {
                             this.hashcache.set(op.key, op.value);
+                            this.emit(SharedPartialMapEvents.ValueChanged, local);
                         }
                         break;
                     case OpType.Delete:
                         if (!this.pendingKeys.has(op.key)) {
                             this.hashcache.delete(op.key);
+                            this.emit(SharedPartialMapEvents.ValueChanged, local);
                         }
-                    case OpType.Clear:
+                        break;
+                    case OpType.Clear: {
+                        const oldHashcache = this.hashcache;
                         this.initializePartialMap(new BeeTreeJSMap());
+                        for (const key of this.pendingKeys.keys()) {
+                            this.hashcache.set(
+                                key,
+                                oldHashcache.get(key) ?? fail("Value should be set in the old cache"),
+                            );
+                        }
+                        this.emit(SharedPartialMapEvents.Clear, local);
+                        break;
+                    }
                     default:
                         throw new Error("Unsupported op type");
                 }
