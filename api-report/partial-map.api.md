@@ -43,9 +43,9 @@ export interface IBeeTree<T, THandle> {
     // (undocumented)
     has(key: string): Promise<boolean>;
     // (undocumented)
-    summarize(updates: Map<string, T>, deletes: Set<string>, uploadBlob: (data: any) => Promise<THandle>): Promise<IQueenBee<THandle>>;
+    summarize(updates: Iterable<[string, T]>, deletes: Iterable<string>, uploadBlob: (data: any) => Promise<THandle>): Promise<IQueenBee<THandle>>;
     // (undocumented)
-    summarizeSync(updates: Map<string, T>, deletes: Set<string>): IQueenBee<IDroneBee>;
+    summarizeSync(updates: Iterable<[string, T]>, deletes: Iterable<string>): IQueenBee<IDroneBee>;
 }
 
 // @public (undocumented)
