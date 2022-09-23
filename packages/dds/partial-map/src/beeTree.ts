@@ -52,6 +52,17 @@ export class BeeTree<T, THandle> implements IBeeTree<T, THandle>, IHandleProvide
         this.root = await this.root.delete(key);
     }
 
+    public summarizeSync(updates: Map<string, T>, deletes: Set<string>): IQueenBee<IDroneBee> {
+        // TODO: How to implement this?
+        return {
+            order: this.order,
+            root: {
+                keys: [],
+                values: [],
+            },
+        };
+    }
+
 	public async summarize(updates: Map<string, T>, deletes: Set<string>): Promise<IQueenBee<THandle>> {
 		for (const [key, value] of updates.entries()) {
             await this.set(key, value);
