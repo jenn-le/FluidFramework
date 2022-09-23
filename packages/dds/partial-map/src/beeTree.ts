@@ -63,12 +63,12 @@ export class BeeTree<T, THandle> implements IBeeTree<T, THandle>, IHandleProvide
         };
     }
 
-	public async summarize(updates: Map<string, T>, deletes: Set<string>): Promise<IQueenBee<THandle>> {
-		for (const [key, value] of updates.entries()) {
+	public async summarize(updates: Iterable<[string, T]>, deletes: Iterable<string>): Promise<IQueenBee<THandle>> {
+		for (const [key, value] of updates) {
             await this.set(key, value);
         }
 
-        for (const key of deletes.keys()) {
+        for (const key of deletes) {
             await this.delete(key);
         }
 

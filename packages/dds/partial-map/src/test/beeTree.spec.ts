@@ -26,11 +26,9 @@ class MockHandleMap {
 
 function mockBeeTree<T>(order = 3): BeeTree<T, number> {
     const mockHandleMap = new MockHandleMap();
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
     return new BeeTree<T, number>(
         order,
         async (bee) => mockHandleMap.createHandle(bee),
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-return
         async (handle) => mockHandleMap.resolveHandle(handle),
     );
 }
@@ -83,6 +81,30 @@ describe("BeeTree", () => {
         for (const key of manyKeys) {
             await beeTree.delete(key);
             assert.equal(await beeTree.has(key), false);
+        }
+    });
+
+    it("can load lazily", async () => {
+        const mockHandleMap = new MockHandleMap();
+        const beeTree = new BeeTree<string, number>(
+            3,
+            async (bee) => mockHandleMap.createHandle(bee),
+            async (handle) => mockHandleMap.resolveHandle(handle),
+        );
+
+        for (const key of manyKeys) {
+            await beeTree.set(key, key);
+        }
+
+        const summary = await beeTree.summarize([], []);
+        const loadedBeeTree = BeeTree.load<unknown, number>(
+            summary,
+            async (bee) => mockHandleMap.createHandle(bee),
+            async (handle) => mockHandleMap.resolveHandle(handle),
+        );
+
+        for (const key of manyKeys) {
+            assert.equal(await loadedBeeTree.get(key), key);
         }
     });
 });
