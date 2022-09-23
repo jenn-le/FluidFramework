@@ -106,6 +106,11 @@ describe("BeeTree", () => {
         for (const key of manyKeys) {
             assert.equal(await loadedBeeTree.get(key), key);
         }
+
+        for (const key of manyKeys) {
+            await beeTree.delete(key);
+            assert.equal(await beeTree.has(key), false);
+        }
     });
 });
 
