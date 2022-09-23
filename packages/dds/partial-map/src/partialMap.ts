@@ -168,7 +168,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
      * TODO
      */
     public get size() {
-        return 0;
+        throw new Error("Method not implemented");
     }
 
     /**

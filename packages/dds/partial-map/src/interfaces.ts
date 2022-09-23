@@ -15,11 +15,6 @@ import { IDroneBee, IQueenBee } from "./persistedTypes";
      * The key storing the value that changed.
      */
     key: string;
-
-    /**
-     * The value that was stored at the key prior to the change.
-     */
-    previousValue: any;
 }
 
 export enum SharedPartialMapEvents {
