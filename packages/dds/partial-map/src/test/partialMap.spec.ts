@@ -173,36 +173,6 @@ describe("PartialMap", () => {
                 assert.equal(await map1.get(key), newValue, "The first map did not get the new value");
                 assert.equal(await map2.get(key), newValue, "The second map did not get the new value");
             });
-
-            // it("metadata op", async () => {
-            //     const serializable: ISerializableValue = { type: "Plain", value: "value" };
-            //     const dataStoreRuntime1 = new MockFluidDataStoreRuntime();
-            //     const op: IMapSetOperation = { type: "set", key: "key", value: serializable };
-            //     const map1 = new TestSharedPartialMap("testMap1", dataStoreRuntime1, MapFactory.Attributes);
-            //     let metadata = map1.testApplyStashedOp(op);
-            //     assert.equal(metadata.type, "add");
-            //     assert.equal(metadata.pendingMessageId, 0);
-            //     const editmetadata = map1.testApplyStashedOp(op) as IMapKeyEditLocalOpMetadata;
-            //     assert.equal(editmetadata.type, "edit");
-            //     assert.equal(editmetadata.pendingMessageId, 1);
-            //     assert.equal(editmetadata.previousValue.value, "value");
-            //     const serializable2: ISerializableValue = { type: "Plain", value: "value2" };
-            //     const op2: IMapSetOperation = { type: "set", key: "key2", value: serializable2 };
-            //     metadata = map1.testApplyStashedOp(op2);
-            //     assert.equal(metadata.type, "add");
-            //     assert.equal(metadata.pendingMessageId, 2);
-            //     const op3: IMapDeleteOperation = { type: "delete", key: "key2" };
-            //     metadata = map1.testApplyStashedOp(op3) as IMapKeyEditLocalOpMetadata;
-            //     assert.equal(metadata.type, "edit");
-            //     assert.equal(metadata.pendingMessageId, 3);
-            //     assert.equal(metadata.previousValue.value, "value2");
-            //     const op4: IMapClearOperation = { type: "clear" };
-            //     metadata = map1.testApplyStashedOp(op4) as IMapClearLocalOpMetadata;
-            //     assert.equal(metadata.pendingMessageId, 4);
-            //     assert.equal(metadata.type, "clear");
-            //     assert.equal(metadata.previousMap?.get("key")?.value, "value");
-            //     assert.equal(metadata.previousMap?.has("key2"), false);
-            // });
         });
     });
 

@@ -244,7 +244,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         }
 
         this.incrementLocalKeyCount(key);
-        const opValue = this.serializer.encode(
+        const opValue = this.serializer.stringify(
             value,
             this.handle);
         const op: SetOp = {
@@ -407,14 +407,14 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
                 switch (op.type) {
                     case OpType.Set:
                         if (!this.pendingKeys.has(op.key)) {
-                            this.hashcache.set(op.key, op.value);
-                            this.emit(SharedPartialMapEvents.ValueChanged, local);
+                            this.hashcache.set(op.key, this.serializer.parse(op.value));
+                            this.emit(SharedPartialMapEvents.ValueChanged, op.key, local);
                         }
                         break;
                     case OpType.Delete:
                         if (!this.pendingKeys.has(op.key)) {
                             this.hashcache.delete(op.key);
-                            this.emit(SharedPartialMapEvents.ValueChanged, local);
+                            this.emit(SharedPartialMapEvents.ValueChanged, op.key, local);
                         }
                         break;
                     case OpType.Clear: {
