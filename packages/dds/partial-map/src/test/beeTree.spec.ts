@@ -97,10 +97,11 @@ describe("BeeTree", () => {
         }
 
         const summary = await beeTree.summarize([], []);
-        const loadedBeeTree = BeeTree.load<unknown, number>(
+        const loadedBeeTree = await BeeTree.load<unknown, number>(
             summary,
             async (bee) => mockHandleMap.createHandle(bee),
             async (handle) => mockHandleMap.resolveHandle(handle),
+            (handle): handle is number => typeof handle === "number",
         );
 
         for (const key of manyKeys) {

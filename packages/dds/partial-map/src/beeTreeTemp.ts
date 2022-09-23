@@ -8,11 +8,12 @@ import { IFluidSerializer, ISerializedHandle, isSerializedHandle } from "@fluidf
 import { IBeeTree } from "./interfaces";
 import { IDroneBee, IQueenBee } from "./persistedTypes";
 
-export class BeeTreeJSMap<T, THandle = ISerializedHandle> implements IBeeTree<T, THandle> {
-	public static async create<T, THandle = ISerializedHandle>(
+export class BeeTreeJSMap<T> implements IBeeTree<T, ISerializedHandle> {
+	public static async create<T>(
         queen: IQueenBee<ISerializedHandle | IDroneBee>,
         serializer: IFluidSerializer,
-    ): Promise<BeeTreeJSMap<T, THandle>> {
+        createHandle: (content: IDroneBee) => Promise<ISerializedHandle>,
+    ): Promise<BeeTreeJSMap<T>> {
         let drone: IDroneBee;
 
         if (isSerializedHandle(queen.root)) {
@@ -26,7 +27,7 @@ export class BeeTreeJSMap<T, THandle = ISerializedHandle> implements IBeeTree<T,
         const keys = drone.keys;
         const values = drone.values;
 
-        const beeTree = new BeeTreeJSMap<T, THandle>();
+        const beeTree = new BeeTreeJSMap<T>(createHandle);
 
         assert(keys.length === values.length, "Keys and values must correspond to each other");
 
@@ -36,6 +37,8 @@ export class BeeTreeJSMap<T, THandle = ISerializedHandle> implements IBeeTree<T,
 
         return beeTree;
 	}
+
+    public constructor(private readonly createHandle: (content: IDroneBee) => Promise<ISerializedHandle>) {}
 
     private readonly map = new Map<string, T>();
 
@@ -50,8 +53,7 @@ export class BeeTreeJSMap<T, THandle = ISerializedHandle> implements IBeeTree<T,
 	public async summarize(
         updates: Map<string, T>,
         deletes: Set<string>,
-        uploadBlob: (data: any) => Promise<THandle>,
-    ): Promise<IQueenBee<THandle>> {
+    ): Promise<IQueenBee<ISerializedHandle>> {
 		for (const [key, value] of updates.entries()) {
 			this.map.set(key, value);
         }
@@ -65,9 +67,9 @@ export class BeeTreeJSMap<T, THandle = ISerializedHandle> implements IBeeTree<T,
             values: Array.from(this.map.values()),
         };
 
-        const queen: IQueenBee<THandle> = {
+        const queen: IQueenBee<ISerializedHandle> = {
             order: 32,
-            root: await uploadBlob(drone),
+            root: await this.createHandle(drone),
         };
         return queen;
 	}

@@ -18,15 +18,17 @@ import {
     createSingleBlobSummary,
     IFluidSerializer,
     ISerializedHandle,
+    isSerializedHandle,
     SharedObject,
 } from "@fluidframework/shared-object-base";
 import { readAndParse } from "@fluidframework/driver-utils";
-import { IsoBuffer } from "@fluidframework/common-utils";
+import { bufferToString, stringToBuffer } from "@fluidframework/common-utils";
+import { IFluidHandle } from "@fluidframework/core-interfaces";
 import { pkgVersion } from "./packageVersion";
 import { IBeeTree, IHashcache, ISharedPartialMapEvents, SharedPartialMapEvents } from "./interfaces";
 import { Hashcache } from "./hashcache";
-import { ClearOp, DeleteOp, IHive, OpType, PartialMapOp, SetOp } from "./persistedTypes";
-import { BeeTreeJSMap } from "./beeTreeTemp";
+import { ClearOp, DeleteOp, IDroneBee, IHive, IWorkerBee, OpType, PartialMapOp, SetOp } from "./persistedTypes";
+import { BeeTree } from "./beeTree";
 
 // interface IMapSerializationFormat {
 //     blobs?: string[];
@@ -91,8 +93,7 @@ export class PartialMapFactory implements IChannelFactory {
     }
 }
 
-// For Noah <3
-// const ORDER = 32;
+const ORDER = 32;
 
 /**
  *
@@ -153,7 +154,11 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         attributes: IChannelAttributes,
     ) {
         super(id, runtime, attributes, "fluid_map_");
-        this.initializePartialMap(new BeeTreeJSMap());
+        this.initializePartialMap(new BeeTree(
+            ORDER,
+            this.createHandle.bind(this),
+            this.resolveHandle.bind(this)),
+        );
     }
 
     private initializePartialMap(beeTree: IBeeTree<any, ISerializedHandle>): void {
@@ -283,7 +288,11 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
      * Clear all data from the map.
      */
     public clear(): void {
-        this.initializePartialMap(new BeeTreeJSMap());
+        this.initializePartialMap(new BeeTree(
+            ORDER,
+            this.createHandle.bind(this),
+            this.resolveHandle.bind(this)),
+        );
         this.emit(SharedPartialMapEvents.Clear, true);
 
         // If we are not attached, don't submit the op.
@@ -331,19 +340,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         telemetryContext?: ITelemetryContext | undefined,
     ): Promise<ISummaryTreeWithStats> {
         const [updates, deletes] = this.hashcache.flushUpdates();
-        const queen = await this.beeTree.summarize(
-            updates,
-            deletes,
-            async (data: any) => {
-                const serializedContents = this.serializer.encode(data, this.handle);
-                const buffer = IsoBuffer.from(serializedContents);
-                const editHandle = await this.runtime.uploadBlob(buffer);
-                const serialized: ISerializedHandle = this.serializer.encode(editHandle, this.handle) ??
-                    fail("Edit chunk handle could not be serialized.");
-
-                return serialized;
-            },
-        );
+        const queen = await this.beeTree.summarize(updates, deletes);
 
         const hive: IHive = {
             queen,
@@ -351,6 +348,25 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         };
 
         return createSingleBlobSummary(snapshotFileName, this.serializer.stringify(hive, this.handle));
+    }
+
+    private async createHandle(content: IWorkerBee<ISerializedHandle> | IDroneBee): Promise<ISerializedHandle> {
+        const serializedContents = this.serializer.stringify(content, this.handle);
+        const buffer = stringToBuffer(serializedContents, "utf-8");
+        const editHandle = await this.runtime.uploadBlob(buffer);
+        const serialized: ISerializedHandle = this.serializer.encode(editHandle, this.handle) ??
+            fail("Edit chunk handle could not be serialized.");
+
+        return serialized;
+    }
+
+    private async resolveHandle(
+        handle: ISerializedHandle | IDroneBee,
+    ): Promise<IWorkerBee<ISerializedHandle> | IDroneBee> {
+        const editHandle: IFluidHandle<ArrayBufferLike> = this.serializer.decode(handle);
+        const serializedContents = bufferToString(await editHandle.get(), "utf-8");
+        const bee: IWorkerBee<ISerializedHandle> | IDroneBee = this.serializer.parse(serializedContents);
+        return bee;
     }
 
     public getGCData(fullGC?: boolean | undefined): IGarbageCollectionData {
@@ -364,7 +380,14 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
     protected async loadCore(storage: IChannelStorageService) {
         const json = await readAndParse<object>(storage, snapshotFileName);
         const hive = json as IHive;
-        this.initializePartialMap(await BeeTreeJSMap.create(hive.queen, this.serializer));
+        this.initializePartialMap(
+            await BeeTree.load(
+                hive.queen,
+                this.createHandle.bind(this),
+                this.resolveHandle.bind(this),
+                isSerializedHandle,
+            ),
+        );
     }
 
     /**
@@ -419,7 +442,11 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
                         break;
                     case OpType.Clear: {
                         const oldHashcache = this.hashcache;
-                        this.initializePartialMap(new BeeTreeJSMap());
+                        this.initializePartialMap(new BeeTree(
+                            ORDER,
+                            this.createHandle.bind(this),
+                            this.resolveHandle.bind(this)),
+                        );
                         for (const key of this.pendingKeys.keys()) {
                             this.hashcache.set(
                                 key,

@@ -59,7 +59,6 @@ export interface IBeeTree<T, THandle> {
     summarize(
         updates: Iterable<[string, T]>,
         deletes: Iterable<string>,
-        uploadBlob: (data: any) => Promise<THandle>,
     ): Promise<IQueenBee<THandle>>;
     summarizeSync(
         updates: Iterable<[string, T]>,

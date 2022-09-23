@@ -49,13 +49,17 @@ export class BeeTree<T, THandle> implements IBeeTree<T, THandle>, IHandleProvide
         this.root = await this.root.delete(key);
     }
 
-    public summarizeSync(updates: Map<string, T>, deletes: Set<string>): IQueenBee<IDroneBee> {
-        // TODO: How to implement this?
+    public summarizeSync(updates: Iterable<[string, T]>, deletes: Iterable<string>): IQueenBee<IDroneBee> {
+        const map = new Map(updates);
+        for (const d of deletes) {
+            map.delete(d);
+        }
+
         return {
             order: this.order,
             root: {
-                keys: [],
-                values: [],
+                keys: [...map.keys()],
+                values: [...map.values()],
             },
         };
     }
@@ -75,17 +79,28 @@ export class BeeTree<T, THandle> implements IBeeTree<T, THandle>, IHandleProvide
         };
 	}
 
-    public static load<T, THandle>(
-        { order, root }: IQueenBee<THandle>,
+    public static async load<T, THandle>(
+        { order, root }: IQueenBee<THandle | IDroneBee>,
         createHandle: (content: IDroneBee | IWorkerBee<THandle>) => Promise<THandle>,
         resolveHandle: (handle: THandle) => Promise<IDroneBee | IWorkerBee<THandle>>,
-    ): BeeTree<T, THandle> {
-        return new BeeTree(
-            order,
-            createHandle,
-            resolveHandle,
-            new LazyBeeTreeNode(root, order, createHandle, resolveHandle),
-        );
+        isHandle: (handleOrBee: THandle | IDroneBee) => handleOrBee is THandle,
+    ): Promise<BeeTree<T, THandle>> {
+        if (isHandle(root)) {
+            return new BeeTree(
+                order,
+                createHandle,
+                resolveHandle,
+                new LazyBeeTreeNode(root, order, createHandle, resolveHandle),
+            );
+        } else {
+            const beeTree = new BeeTree<T, THandle>(order, createHandle, resolveHandle);
+            assert(root.keys.length === root.values.length, "Malformed drone; should be same number of keys as values");
+            for (const [i, key] of root.keys.entries()) {
+                await beeTree.set(key, root.values[i]);
+            }
+
+            return beeTree;
+        }
     }
 
     getGcWhitelist(): string[] {
