@@ -38,10 +38,7 @@ export class BeeTree<T, THandle> implements IBeeTree<T, THandle>, IHandleProvide
                 [nodeA, nodeB],
                 this.order,
                 this.createHandle,
-                assertResultAsync(
-                    this.resolveHandle,
-                    (bee) => (bee as IWorkerBee<THandle>).children !== undefined,
-                ),
+                this.resolveHandle,
             );
         } else {
             this.root = result;
@@ -382,18 +379,4 @@ function insert<T>(array: readonly T[], index: number, ...values: T[]): T[] {
 
 function remove<T>(array: readonly T[], index: number, count = 1): T[] {
     return [...array.slice(0, index), ...array.slice(index + count)];
-}
-
-/**
- * Convert an async function to one with a narrower return type
- */
- function assertResultAsync<TArgs extends unknown[], TResult, TAssertResult extends TResult>(
-    fn: (...args: TArgs) => Promise<TResult>,
-    ass: (ret: TResult) => asserts ret is TAssertResult,
-): (...args: TArgs) => Promise<TAssertResult> {
-    return async (...args: TArgs) => {
-        const ret = await fn(...args);
-        ass(ret);
-        return ret;
-    };
 }
