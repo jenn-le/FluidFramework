@@ -468,9 +468,6 @@ export class SharedTree extends SharedObject<ISharedTreeEvents> implements NodeI
 	private readonly encoder_0_0_2: SharedTreeEncoder_0_0_2;
 	private encoder_0_1_1: SharedTreeEncoder_0_1_1;
 
-	/** Indicates if the client is the oldest member of the quorum. */
-	private currentIsOldest: boolean;
-
 	private readonly processEditResult = (editResult: EditStatus, editId: EditId): void => {
 		// TODO:#44859: Invalid results should be handled by the app
 		this.emit(SharedTree.eventFromEditResult(editResult), editId);
@@ -512,6 +509,8 @@ export class SharedTree extends SharedObject<ISharedTreeEvents> implements NodeI
 			  };
 	}
 
+    private readonly leaderTracker: LeaderTracker;
+
 	/**
 	 * Create a new SharedTree.
 	 * @param runtime - The runtime the SharedTree will be associated with
@@ -535,22 +534,14 @@ export class SharedTree extends SharedObject<ISharedTreeEvents> implements NodeI
 		this.summarizeHistory = historyPolicy.summarizeHistory;
 		this.uploadEditChunks = historyPolicy.uploadEditChunks;
 
-		// This code is somewhat duplicated from OldestClientObserver because it currently depends on the container runtime
-		// which SharedTree does not have access to.
-		// TODO:#55900: Get rid of copy-pasted OldestClientObserver code
-		const quorum = this.runtime.getQuorum();
-		this.currentIsOldest = this.computeIsOldest();
-		quorum.on('addMember', this.updateOldest);
-		quorum.on('removeMember', this.updateOldest);
-		runtime.on('connected', this.updateOldest);
-		runtime.on('disconnected', this.updateOldest);
-
 		this.logger = ChildLogger.create(runtime.logger, 'SharedTree', sharedTreeTelemetryProperties);
 		this.sequencedEditAppliedLogger = ChildLogger.create(
 			this.logger,
 			'SequencedEditApplied',
 			sharedTreeTelemetryProperties
 		);
+
+        this.leaderTracker = new LeaderTracker(this.runtime, this.logger);
 
 		const attributionId = (options as SharedTreeOptions<WriteFormat.v0_1_1>).attributionId;
 		this.idCompressor = new IdCompressor(createSessionId(), reservedIdCount, attributionId, this.logger);
@@ -578,58 +569,6 @@ export class SharedTree extends SharedObject<ISharedTreeEvents> implements NodeI
 	 */
 	public getWriteFormat(): WriteFormat {
 		return this.writeFormat;
-	}
-
-	/**
-	 * Re-computes currentIsOldest and emits an event if it has changed.
-	 * TODO:#55900: Get rid of copy-pasted OldestClientObserver code
-	 */
-	private readonly updateOldest = () => {
-		const oldest = this.computeIsOldest();
-		if (this.currentIsOldest !== oldest) {
-			this.currentIsOldest = oldest;
-			if (oldest) {
-				this.emit('becameOldest');
-				this.logger.sendTelemetryEvent({ eventName: 'BecameOldestClient' });
-			} else {
-				this.emit('lostOldest');
-			}
-		}
-	};
-
-	/**
-	 * Computes the oldest client in the quorum, true by default if the container is detached and false by default if the client isn't connected.
-	 * TODO:#55900: Get rid of copy-pasted OldestClientObserver code
-	 */
-	private computeIsOldest(): boolean {
-		// If the container is detached, we are the only ones that know about it and are the oldest by default.
-		if (this.runtime.attachState === AttachState.Detached) {
-			return true;
-		}
-
-		// If we're not connected we can't be the oldest connected client.
-		if (!this.runtime.connected) {
-			return false;
-		}
-
-		assert(this.runtime.clientId !== undefined, 'Client id should be set if connected.');
-
-		const quorum = this.runtime.getQuorum();
-		const selfSequencedClient = quorum.getMember(this.runtime.clientId);
-		// When in readonly mode our clientId will not be present in the quorum.
-		if (selfSequencedClient === undefined) {
-			return false;
-		}
-
-		const members = quorum.getMembers();
-		for (const sequencedClient of members.values()) {
-			if (sequencedClient.sequenceNumber < selfSequencedClient.sequenceNumber) {
-				return false;
-			}
-		}
-
-		// No member of the quorum was older
-		return true;
 	}
 
 	/**
@@ -975,13 +914,13 @@ export class SharedTree extends SharedObject<ISharedTreeEvents> implements NodeI
 
 					this.submitOp(noop);
 					this.logger.sendTelemetryEvent({ eventName: 'NoOpSent' });
-				} else if (this.currentIsOldest) {
+				} else if (this.leaderTracker.isLeader()) {
 					this.uploadCatchUpBlobs();
 				}
 			}
 
 			// If this client becomes the oldest, it should take care of uploading catch up blobs.
-			this.on('becameOldest', () => this.uploadCatchUpBlobs());
+			this.leaderTracker.on('promoted', () => this.uploadCatchUpBlobs());
 		}
 	}
 
@@ -1276,7 +1215,7 @@ export class SharedTree extends SharedObject<ISharedTreeEvents> implements NodeI
 						this.submitEditOp(edit);
 					}
 
-					if (this.currentIsOldest) {
+					if (this.leaderTracker.isLeader()) {
 						this.uploadCatchUpBlobs();
 					}
 				},

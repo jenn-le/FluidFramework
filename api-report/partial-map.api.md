@@ -43,7 +43,7 @@ export interface IBeeTree<T, THandle> {
     // (undocumented)
     has(key: string): Promise<boolean>;
     // (undocumented)
-    summarize(updates: Iterable<[string, T]>, deletes: Iterable<string>, uploadBlob: (data: any) => Promise<THandle>): Promise<IQueenBee<THandle>>;
+    summarize(updates: Iterable<[string, T]>, deletes: Iterable<string>): Promise<IQueenBee<THandle>>;
     // (undocumented)
     summarizeSync(updates: Iterable<[string, T]>, deletes: Iterable<string>): IQueenBee<IDroneBee>;
 }
@@ -101,7 +101,6 @@ export interface ISharedPartialMapEvents extends ISharedObjectEvents {
 // @public
 export interface IValueChanged {
     key: string;
-    previousValue: any;
 }
 
 // @public (undocumented)
@@ -178,7 +177,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
     protected reSubmitCore(content: any, localOpMetadata: unknown): void;
     // (undocumented)
     set(key: string, value: any): this;
-    get size(): number;
+    get size(): void;
     // (undocumented)
     summarize(fullTree?: boolean | undefined, trackState?: boolean | undefined, telemetryContext?: ITelemetryContext | undefined): Promise<ISummaryTreeWithStats>;
     // @internal (undocumented)
