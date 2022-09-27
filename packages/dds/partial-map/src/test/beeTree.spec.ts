@@ -4,19 +4,19 @@
  */
 
 import { strict as assert } from "assert";
-import { BeeTree } from "../beeTree";
-import { IDroneBee, IWorkerBee } from "../persistedTypes";
+import { ChunkedBTree } from "../chunkedBTree";
+import { IBtreeLeafNode, IBtreeInteriorNode } from "../persistedTypes";
 
 class MockHandleMap {
-    private readonly map = new Map<number, IWorkerBee<number> | IDroneBee>();
+    private readonly map = new Map<number, IBtreeInteriorNode<number> | IBtreeLeafNode>();
     private count = 0;
 
-    public createHandle(t: IWorkerBee<number> | IDroneBee): number {
+    public createHandle(t: IBtreeInteriorNode<number> | IBtreeLeafNode): number {
         this.map.set(this.count, t);
         return this.count++;
     }
 
-    public resolveHandle(handle: number): IWorkerBee<number> | IDroneBee {
+    public resolveHandle(handle: number): IBtreeInteriorNode<number> | IBtreeLeafNode {
         assert(this.map.has(handle), "Invalid mock handle");
         const bee = this.map.get(handle);
         assert(bee !== undefined, "Map contains undefined as a value");
@@ -24,80 +24,80 @@ class MockHandleMap {
     }
 }
 
-function mockBeeTree<T>(order = 3): BeeTree<T, number> {
+function mockBTree<T>(order = 3): ChunkedBTree<T, number> {
     const mockHandleMap = new MockHandleMap();
-    return new BeeTree<T, number>(
+    return new ChunkedBTree<T, number>(
         order,
         async (bee) => mockHandleMap.createHandle(bee),
         async (handle) => mockHandleMap.resolveHandle(handle),
     );
 }
 
-describe("BeeTree", () => {
+describe("BTree", () => {
     it("can set and read a single value", async () => {
-        const beeTree = mockBeeTree<number>();
-        await beeTree.set("key", 42);
-        assert.equal(await beeTree.get("key"), 42);
+        const btree = mockBTree<number>();
+        await btree.set("key", 42);
+        assert.equal(await btree.get("key"), 42);
     });
 
     it("can has a single value", async () => {
-        const beeTree = mockBeeTree<string>();
-        assert.equal(await beeTree.has("key"), false);
-        await beeTree.set("key", "cheezburger");
-        assert.equal(await beeTree.has("key"), true);
+        const btree = mockBTree<string>();
+        assert.equal(await btree.has("key"), false);
+        await btree.set("key", "cheezburger");
+        assert.equal(await btree.has("key"), true);
     });
 
     it("can delete a single value", async () => {
-        const beeTree = mockBeeTree<number>();
-        await beeTree.set("key", 42);
-        await beeTree.delete("key");
-        assert.equal(await beeTree.has("key"), false);
+        const btree = mockBTree<number>();
+        await btree.set("key", 42);
+        await btree.delete("key");
+        assert.equal(await btree.has("key"), false);
     });
 
     it("can overwrite a single value", async () => {
-        const beeTree = mockBeeTree<number>();
-        await beeTree.set("key", 42);
-        await beeTree.set("key", 43);
-        assert.equal(await beeTree.get("key"), 43);
+        const btree = mockBTree<number>();
+        await btree.set("key", 42);
+        await btree.set("key", 43);
+        assert.equal(await btree.get("key"), 43);
     });
 
     it("can set many values", async () => {
-        const beeTree = mockBeeTree<string>();
+        const btree = mockBTree<string>();
         for (const key of manyKeys) {
-            await beeTree.set(key, key);
+            await btree.set(key, key);
         }
 
         for (const key of manyKeys) {
-            assert.equal(await beeTree.get(key), key);
+            assert.equal(await btree.get(key), key);
         }
     });
 
     it("can delete many values", async () => {
-        const beeTree = mockBeeTree<string>();
+        const btree = mockBTree<string>();
         for (const key of manyKeys) {
-            await beeTree.set(key, key);
+            await btree.set(key, key);
         }
 
         for (const key of manyKeys) {
-            await beeTree.delete(key);
-            assert.equal(await beeTree.has(key), false);
+            await btree.delete(key);
+            assert.equal(await btree.has(key), false);
         }
     });
 
     it("can load lazily", async () => {
         const mockHandleMap = new MockHandleMap();
-        const beeTree = new BeeTree<string, number>(
+        const btree = new ChunkedBTree<string, number>(
             3,
             async (bee) => mockHandleMap.createHandle(bee),
             async (handle) => mockHandleMap.resolveHandle(handle),
         );
 
         for (const key of manyKeys) {
-            await beeTree.set(key, key);
+            await btree.set(key, key);
         }
 
-        const summary = await beeTree.summarize([], []);
-        const loadedBeeTree = await BeeTree.load<unknown, number>(
+        const summary = await btree.flush([], []);
+        const loadedBTree = await ChunkedBTree.load<unknown, number>(
             summary,
             async (bee) => mockHandleMap.createHandle(bee),
             async (handle) => mockHandleMap.resolveHandle(handle),
@@ -105,12 +105,12 @@ describe("BeeTree", () => {
         );
 
         for (const key of manyKeys) {
-            assert.equal(await loadedBeeTree.get(key), key);
+            assert.equal(await loadedBTree.get(key), key);
         }
 
         for (const key of manyKeys) {
-            await beeTree.delete(key);
-            assert.equal(await beeTree.has(key), false);
+            await btree.delete(key);
+            assert.equal(await btree.has(key), false);
         }
     });
 });

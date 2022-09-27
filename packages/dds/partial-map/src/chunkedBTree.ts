@@ -1,24 +1,24 @@
-/* eslint-disable no-bitwise */
 /*!
  * Copyright (c) Microsoft Corporation and contributors. All rights reserved.
  * Licensed under the MIT License.
  */
 
+import { fail } from "assert";
 import { assert } from "@fluidframework/common-utils";
-import { IBeeTree, IHandleProvider } from "./interfaces";
-import { IDroneBee, IQueenBee, IWorkerBee } from "./persistedTypes";
+import { IChunkedBTree } from "./interfaces";
+import { IBtreeLeafNode, ISerializedBtree, IBtreeInteriorNode } from "./persistedTypes";
 
-export class BeeTree<T, THandle> implements IBeeTree<T, THandle>, IHandleProvider {
-    private root: IBeeTreeNode<T, THandle>;
+export class ChunkedBTree<T, THandle> implements IChunkedBTree<T, THandle> {
+    private root: IBTreeNode<T, THandle>;
 
 	public constructor(
         public readonly order: number,
-        private readonly createHandle: (content: IDroneBee | IWorkerBee<THandle>) => Promise<THandle>,
-        private readonly resolveHandle: (handle: THandle) => Promise<IDroneBee | IWorkerBee<THandle>>,
-        root?: IBeeTreeNode<T, THandle>,
+        private readonly createHandle: (content: IBtreeLeafNode | IBtreeInteriorNode<THandle>) => Promise<THandle>,
+        private readonly resolveHandle: (handle: THandle) => Promise<IBtreeLeafNode | IBtreeInteriorNode<THandle>>,
+        root?: IBTreeNode<T, THandle>,
     ) {
         assert(order >= 2, "Order out of bounds");
-        this.root = root ?? new LeafyBeeTreeNode([], [], order, createHandle);
+        this.root = root ?? new LeafyBTreeNode([], [], order, createHandle);
     }
 
 	public async get(key: string): Promise<T | undefined> {
@@ -33,7 +33,7 @@ export class BeeTree<T, THandle> implements IBeeTree<T, THandle>, IHandleProvide
         const result = await this.root.set(key, value);
         if (Array.isArray(result)) {
             const [nodeA, k, nodeB] = result;
-            this.root = new BeeTreeNode(
+            this.root = new BTreeNode(
                 [k],
                 [nodeA, nodeB],
                 this.order,
@@ -49,7 +49,7 @@ export class BeeTree<T, THandle> implements IBeeTree<T, THandle>, IHandleProvide
         this.root = await this.root.delete(key);
     }
 
-    public summarizeSync(updates: Iterable<[string, T]>, deletes: Iterable<string>): IQueenBee<IDroneBee> {
+    public flushSync(updates: Iterable<[string, T]>, deletes: Iterable<string>): ISerializedBtree<IBtreeLeafNode> {
         const map = new Map(updates);
         for (const d of deletes) {
             map.delete(d);
@@ -64,7 +64,7 @@ export class BeeTree<T, THandle> implements IBeeTree<T, THandle>, IHandleProvide
         };
     }
 
-	public async summarize(updates: Iterable<[string, T]>, deletes: Iterable<string>): Promise<IQueenBee<THandle>> {
+	public async flush(updates: Iterable<[string, T]>, deletes: Iterable<string>): Promise<ISerializedBtree<THandle>> {
 		for (const [key, value] of updates) {
             await this.set(key, value);
         }
@@ -80,52 +80,66 @@ export class BeeTree<T, THandle> implements IBeeTree<T, THandle>, IHandleProvide
 	}
 
     public static async load<T, THandle>(
-        { order, root }: IQueenBee<THandle | IDroneBee>,
-        createHandle: (content: IDroneBee | IWorkerBee<THandle>) => Promise<THandle>,
-        resolveHandle: (handle: THandle) => Promise<IDroneBee | IWorkerBee<THandle>>,
-        isHandle: (handleOrBee: THandle | IDroneBee) => handleOrBee is THandle,
-    ): Promise<BeeTree<T, THandle>> {
+        { order, root }: ISerializedBtree<THandle | IBtreeLeafNode>,
+        createHandle: (content: IBtreeLeafNode | IBtreeInteriorNode<THandle>) => Promise<THandle>,
+        resolveHandle: (handle: THandle) => Promise<IBtreeLeafNode | IBtreeInteriorNode<THandle>>,
+        isHandle: (handleOrNode: THandle | IBtreeLeafNode) => handleOrNode is THandle,
+    ): Promise<ChunkedBTree<T, THandle>> {
         if (isHandle(root)) {
-            return new BeeTree(
+            return new ChunkedBTree(
                 order,
                 createHandle,
                 resolveHandle,
-                new LazyBeeTreeNode(root, order, createHandle, resolveHandle),
+                new LazyBTreeNode(root, order, createHandle, resolveHandle),
             );
         } else {
-            const beeTree = new BeeTree<T, THandle>(order, createHandle, resolveHandle);
+            const btree = new ChunkedBTree<T, THandle>(order, createHandle, resolveHandle);
             assert(root.keys.length === root.values.length, "Malformed drone; should be same number of keys as values");
             for (const [i, key] of root.keys.entries()) {
-                await beeTree.set(key, root.values[i]);
+                await btree.set(key, root.values[i]);
             }
 
-            return beeTree;
+            return btree;
         }
     }
 
-    getGcWhitelist(): string[] {
-        throw new Error("Method not implemented.");
+    public static loadSync<T, THandle>(
+        { order, root }: ISerializedBtree<THandle | IBtreeLeafNode>,
+        createHandle: (content: IBtreeLeafNode | IBtreeInteriorNode<THandle>) => Promise<THandle>,
+        resolveHandle: (handle: THandle) => Promise<IBtreeLeafNode | IBtreeInteriorNode<THandle>>,
+        isHandle: (handleOrNode: THandle | IBtreeLeafNode) => handleOrNode is THandle,
+    ): ChunkedBTree<T, THandle> {
+        if (isHandle(root)) {
+            return new ChunkedBTree(
+                order,
+                createHandle,
+                resolveHandle,
+                new LazyBTreeNode(root, order, createHandle, resolveHandle),
+            );
+        } else {
+            fail("Cannot synchronously chunk btree.");
+        }
     }
 }
 
-interface IBeeTreeNode<T, THandle> {
+interface IBTreeNode<T, THandle> {
     has(key: string): Promise<boolean>;
     get(key: string): Promise<T | undefined>;
     set(
         key: string,
         value: T,
-    ): Promise<IBeeTreeNode<T, THandle> | [IBeeTreeNode<T, THandle>, string, IBeeTreeNode<T, THandle>]>;
-    delete(key: string): Promise<IBeeTreeNode<T, THandle>>; // "delet this"
+    ): Promise<IBTreeNode<T, THandle> | [IBTreeNode<T, THandle>, string, IBTreeNode<T, THandle>]>;
+    delete(key: string): Promise<IBTreeNode<T, THandle>>; // "delet this"
     upload(): Promise<THandle>;
 }
 
-class BeeTreeNode<T, THandle> {
+class BTreeNode<T, THandle> {
     public constructor(
         public readonly keys: readonly string[],
-        public readonly children: readonly (IBeeTreeNode<T, THandle>)[],
+        public readonly children: readonly (IBTreeNode<T, THandle>)[],
         public readonly order: number,
-        public readonly createHandle: (content: IWorkerBee<THandle> | IDroneBee) => Promise<THandle>,
-        public readonly resolveHandle: (handle: THandle) => Promise<IWorkerBee<THandle> | IDroneBee>,
+        public readonly createHandle: (content: IBtreeInteriorNode<THandle> | IBtreeLeafNode) => Promise<THandle>,
+        public readonly resolveHandle: (handle: THandle) => Promise<IBtreeInteriorNode<THandle> | IBtreeLeafNode>,
     ) {
         assert(children.length >= 1, "Unexpected empty interior node");
         assert(keys.length === children.length - 1, "Must have exactly one more child than keys");
@@ -153,7 +167,7 @@ class BeeTreeNode<T, THandle> {
 
     public async set(
         key: string, value: T,
-    ): Promise<BeeTreeNode<T, THandle> | [BeeTreeNode<T, THandle>, string, BeeTreeNode<T, THandle>]> {
+    ): Promise<BTreeNode<T, THandle> | [BTreeNode<T, THandle>, string, BTreeNode<T, THandle>]> {
         for (let i = 0; i < this.children.length; i++) {
             if (i === this.keys.length || key < this.keys[i]) {
                 const childResult = await this.children[i].set(key, value);
@@ -171,18 +185,18 @@ class BeeTreeNode<T, THandle> {
                         );
 
                         return [
-                            new BeeTreeNode(keys, children, this.order, this.createHandle, this.resolveHandle),
+                            new BTreeNode(keys, children, this.order, this.createHandle, this.resolveHandle),
                             keys2.splice(0, 1)[0],
-                            new BeeTreeNode(keys2, children2, this.order, this.createHandle, this.resolveHandle),
+                            new BTreeNode(keys2, children2, this.order, this.createHandle, this.resolveHandle),
                         ];
                     }
 
-                    return new BeeTreeNode(keys, children, this.order, this.createHandle, this.resolveHandle);
+                    return new BTreeNode(keys, children, this.order, this.createHandle, this.resolveHandle);
                 } else {
                     // Replace the child
                     const children = [...this.children];
                     children[i] = childResult;
-                    return new BeeTreeNode(this.keys, children, this.order, this.createHandle, this.resolveHandle);
+                    return new BTreeNode(this.keys, children, this.order, this.createHandle, this.resolveHandle);
                 }
             }
         }
@@ -190,12 +204,12 @@ class BeeTreeNode<T, THandle> {
         throw new Error("Unreachable code");
     }
 
-    public async delete(key: string): Promise<BeeTreeNode<T, THandle>> {
+    public async delete(key: string): Promise<BTreeNode<T, THandle>> {
         for (let i = 0; i < this.children.length; i++) {
             if (i === this.keys.length || key < this.keys[i]) {
                 const children = [...this.children];
                 children[i] = await this.children[i].delete(key);
-                return new BeeTreeNode(this.keys, children, this.order, this.createHandle, this.resolveHandle);
+                return new BTreeNode(this.keys, children, this.order, this.createHandle, this.resolveHandle);
             }
         }
 
@@ -203,7 +217,7 @@ class BeeTreeNode<T, THandle> {
     }
 
     public async upload(): Promise<THandle> {
-        const worker: IWorkerBee<THandle> = {
+        const worker: IBtreeInteriorNode<THandle> = {
             keys: this.keys,
             children: await Promise.all(this.children.map(async (c) => c.upload())),
         };
@@ -212,12 +226,12 @@ class BeeTreeNode<T, THandle> {
     }
 }
 
-class LeafyBeeTreeNode<T, THandle> implements IBeeTreeNode<T, THandle> {
+class LeafyBTreeNode<T, THandle> implements IBTreeNode<T, THandle> {
     public constructor(
         public readonly keys: readonly string[],
         public readonly values: readonly T[],
         public readonly order: number,
-        public readonly createHandle: (content: IDroneBee | IWorkerBee<THandle>) => Promise<THandle>,
+        public readonly createHandle: (content: IBtreeLeafNode | IBtreeInteriorNode<THandle>) => Promise<THandle>,
     ) {
         assert(keys.length === values.length, "Invalid keys or values");
     }
@@ -245,12 +259,12 @@ class LeafyBeeTreeNode<T, THandle> implements IBeeTreeNode<T, THandle> {
     public async set(
         key: string,
         value: T,
-    ): Promise<LeafyBeeTreeNode<T, THandle> | [LeafyBeeTreeNode<T, THandle>, string, LeafyBeeTreeNode<T, THandle>]> {
+    ): Promise<LeafyBTreeNode<T, THandle> | [LeafyBTreeNode<T, THandle>, string, LeafyBTreeNode<T, THandle>]> {
         for (let i = 0; i <= this.keys.length; i++) {
             if (this.keys[i] === key) {
                 // Already have a value for this key, so just clone ourselves but replace the value
                 const values = [...this.values.slice(0, i), value, ...this.values.slice(i + 1)];
-                return new LeafyBeeTreeNode(this.keys, values, this.order, this.createHandle);
+                return new LeafyBTreeNode(this.keys, values, this.order, this.createHandle);
             }
             if (i === this.keys.length || key < this.keys[i]) {
                 const keys = insert(this.keys, i, key);
@@ -260,24 +274,24 @@ class LeafyBeeTreeNode<T, THandle> implements IBeeTreeNode<T, THandle> {
                     const keys2 = keys.splice(Math.ceil(keys.length / 2), Math.floor(keys.length / 2));
                     const values2 = values.splice(Math.ceil(values.length / 2), Math.floor(values.length / 2));
                     return [
-                        new LeafyBeeTreeNode(keys, values, this.order, this.createHandle),
+                        new LeafyBTreeNode(keys, values, this.order, this.createHandle),
                         keys2[0],
-                        new LeafyBeeTreeNode(keys2, values2, this.order, this.createHandle),
+                        new LeafyBTreeNode(keys2, values2, this.order, this.createHandle),
                     ];
                 }
-                return new LeafyBeeTreeNode(keys, values, this.order, this.createHandle);
+                return new LeafyBTreeNode(keys, values, this.order, this.createHandle);
             }
         }
 
         throw new Error("Unreachable code");
     }
 
-    public async delete(key: string): Promise<LeafyBeeTreeNode<T, THandle>> {
+    public async delete(key: string): Promise<LeafyBTreeNode<T, THandle>> {
         for (let i = 0; i <= this.keys.length; i++) {
             if (this.keys[i] === key) {
                 const keys = remove(this.keys, i);
                 const values = remove(this.values, i);
-                return new LeafyBeeTreeNode(keys, values, this.order, this.createHandle);
+                return new LeafyBTreeNode(keys, values, this.order, this.createHandle);
             }
         }
 
@@ -285,7 +299,7 @@ class LeafyBeeTreeNode<T, THandle> implements IBeeTreeNode<T, THandle> {
     }
 
     public async upload(): Promise<THandle> {
-        const drone: IDroneBee = {
+        const drone: IBtreeLeafNode = {
             keys: this.keys,
             values: this.values,
         };
@@ -294,28 +308,28 @@ class LeafyBeeTreeNode<T, THandle> implements IBeeTreeNode<T, THandle> {
     }
 }
 
-class LazyBeeTreeNode<T, THandle> implements IBeeTreeNode<T, THandle> {
-    private node?: IBeeTreeNode<T, THandle>;
+class LazyBTreeNode<T, THandle> implements IBTreeNode<T, THandle> {
+    private node?: IBTreeNode<T, THandle>;
 
     public constructor(
         private readonly handle: THandle,
         public readonly order: number,
-        private readonly createHandle: (content: IWorkerBee<THandle> | IDroneBee) => Promise<THandle>,
-        private readonly resolveHandle: (handle: THandle) => Promise<IWorkerBee<THandle> | IDroneBee>,
+        private readonly createHandle: (content: IBtreeInteriorNode<THandle> | IBtreeLeafNode) => Promise<THandle>,
+        private readonly resolveHandle: (handle: THandle) => Promise<IBtreeInteriorNode<THandle> | IBtreeLeafNode>,
     ) {}
 
-    private async buzz(): Promise<IBeeTreeNode<T, THandle>> {
+    private async load(): Promise<IBTreeNode<T, THandle>> {
         if (this.node === undefined) {
-            const bee = await this.resolveHandle(this.handle);
-            this.node = this.isDrone(bee) ? new LeafyBeeTreeNode(
-                    bee.keys,
-                    bee.values,
+            const loadedNode = await this.resolveHandle(this.handle);
+            this.node = this.isDrone(loadedNode) ? new LeafyBTreeNode(
+                    loadedNode.keys,
+                    loadedNode.values,
                     this.order,
                     this.createHandle,
-                ) : new BeeTreeNode(
-                    bee.keys,
-                    bee.children.map(
-                        (handle) => new LazyBeeTreeNode(handle, this.order, this.createHandle, this.resolveHandle),
+                ) : new BTreeNode(
+                    loadedNode.keys,
+                    loadedNode.children.map(
+                        (handle) => new LazyBTreeNode(handle, this.order, this.createHandle, this.resolveHandle),
                     ),
                     this.order,
                     this.createHandle,
@@ -327,30 +341,30 @@ class LazyBeeTreeNode<T, THandle> implements IBeeTreeNode<T, THandle> {
     }
 
     public async has(key: string): Promise<boolean> {
-        return (await this.buzz()).has(key);
+        return (await this.load()).has(key);
     }
 
     public async get(key: string): Promise<T | undefined> {
-        return (await this.buzz()).get(key);
+        return (await this.load()).get(key);
     }
 
     public async set(
         key: string,
         value: T,
-    ): Promise<IBeeTreeNode<T, THandle> | [IBeeTreeNode<T, THandle>, string, IBeeTreeNode<T, THandle>]> {
-        return (await this.buzz()).set(key, value);
+    ): Promise<IBTreeNode<T, THandle> | [IBTreeNode<T, THandle>, string, IBTreeNode<T, THandle>]> {
+        return (await this.load()).set(key, value);
     }
 
-    public async delete(key: string): Promise<IBeeTreeNode<T, THandle>> {
-        return (await this.buzz()).delete(key);
+    public async delete(key: string): Promise<IBTreeNode<T, THandle>> {
+        return (await this.load()).delete(key);
     }
 
     public async upload(): Promise<THandle> {
         return this.handle;
     }
 
-    private isDrone(bee: IWorkerBee<THandle> | IDroneBee): bee is IDroneBee {
-        return (bee as IDroneBee).values !== undefined;
+    private isDrone(node: IBtreeInteriorNode<THandle> | IBtreeLeafNode): node is IBtreeLeafNode {
+        return (node as IBtreeLeafNode).values !== undefined;
     }
 }
 

@@ -3,9 +3,8 @@
  * Licensed under the MIT License.
  */
 
-import { Serializable } from "@fluidframework/datastore-definitions";
 import { ISharedObjectEvents } from "@fluidframework/shared-object-base";
-import { IDroneBee, IQueenBee } from "./persistedTypes";
+import { IBtreeLeafNode, ISerializedBtree } from "./persistedTypes";
 
 /**
  * Type of "valueChanged" event parameter.
@@ -53,30 +52,15 @@ export enum SharedPartialMapEvents {
 /**
  * TODO doc
  */
-export interface IBeeTree<T, THandle> {
+export interface IChunkedBTree<T, THandle> {
     get(key: string): Promise<T | undefined>;
     has(key: string): Promise<boolean>;
-    summarize(
-        updates: Iterable<[string, T]>,
-        deletes: Iterable<string>,
-    ): Promise<IQueenBee<THandle>>;
-    summarizeSync(
-        updates: Iterable<[string, T]>,
-        deletes: Iterable<string>,
-    ): IQueenBee<IDroneBee>;
-}
-
-export interface IHandleProvider {
-    getGcWhitelist(): string[];
-}
-
-/**
- * TODO doc
- */
-export interface IHashcache<T = Serializable> {
-    get(key: string): T | undefined;
-    has(key: string): boolean;
-    set(key: string, value: T): void;
-    delete(key: string): boolean;
-    flushUpdates(): [Map<string, T>, Set<string>];
+    flush(
+        updates: Map<string, T>,
+        deletes: Set<string>,
+    ): Promise<ISerializedBtree<THandle>>;
+    flushSync(
+        updates: Map<string, T>,
+        deletes: Set<string>,
+    ): ISerializedBtree<IBtreeLeafNode>;
 }

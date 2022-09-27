@@ -5,35 +5,36 @@
 
 import { ISerializedHandle } from "@fluidframework/shared-object-base";
 
-export interface IHive {
-    readonly queen: IQueenBee<ISerializedHandle>;
-    readonly honeycombs: Honeycombs;
+export interface ISharedPartialMapSummary<THandle> {
+    readonly root: ISerializedBtree<THandle>;
+    readonly gcWhiteList: GCWhiteList;
 }
 
-export interface IQueenBee<THandle> {
+export interface ISerializedBtree<THandle> {
     readonly order: number;
     readonly root: THandle;
 }
 
-export interface IWorkerBee<THandle> {
+export interface IBtreeInteriorNode<THandle> {
     readonly keys: readonly string[];
     readonly children: readonly THandle[];
 }
 
-export interface IDroneBee {
+export interface IBtreeLeafNode {
     readonly keys: readonly string[];
     readonly values: readonly any[];
 }
 
-export type Honeycombs = string[];
+export type GCWhiteList = string[];
 
 export enum OpType {
     Set,
     Delete,
     Clear,
+    Compact,
 }
 
-export type PartialMapOp = SetOp | DeleteOp | ClearOp;
+export type PartialMapOp = SetOp | DeleteOp | ClearOp | CompactionOp;
 
 export interface SetOp {
     type: OpType.Set;
@@ -48,4 +49,9 @@ export interface DeleteOp {
 
 export interface ClearOp {
     type: OpType.Clear;
+}
+
+export interface CompactionOp {
+    type: OpType.Compact;
+    hive: ISharedPartialMapSummary<ISerializedHandle>;
 }
