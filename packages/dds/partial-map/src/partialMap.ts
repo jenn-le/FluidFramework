@@ -170,7 +170,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
             this.createHandle.bind(this),
             this.resolveHandle.bind(this)),
         );
-        this.leaderTracker.on("promoted", () => this.startCompaction());
+        this.leaderTracker.on("promoted", () => this.tryStartCompaction());
     }
 
     private initializePartialMap(btree: IChunkedBTree<any, ISerializedHandle>): void {
@@ -323,8 +323,10 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         this.submitLocalMessage(op);
     }
 
-    private startCompaction(): void {
-        this.compact().catch((reason) => {});
+    private tryStartCompaction(): void {
+        if (this.sequencedState.unflushedChangeCount > changeCountToFlushAt) {
+            this.compact().catch((reason) => {});
+        }
     }
 
     private async compact(): Promise<void> {
@@ -503,8 +505,8 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
                 default:
                     throw new Error("Unsupported op type");
             }
-            if (this.sequencedState.unflushedChangeCount > changeCountToFlushAt && this.leaderTracker.isLeader()) {
-                this.startCompaction();
+            if (this.leaderTracker.isLeader()) {
+                this.tryStartCompaction();
             }
         }
     }
