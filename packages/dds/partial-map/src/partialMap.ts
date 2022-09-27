@@ -479,7 +479,6 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
                     } else {
                         this.emit(SharedPartialMapEvents.ValueChanged, op.key, local);
                     }
-                    this.emit(SharedPartialMapEvents.ValueChanged, op.key, local);
                     break;
                 case OpType.Delete:
                     this.sequencedState.delete(op.key);
