@@ -26,6 +26,8 @@ export class PendingState<T> {
             } else if (this.pendingClearCount > 0) {
                 return { value: undefined, keyIsModified: true, isDeleted: true };
             }
+        } else if (this.pendingClearCount > 0) {
+            return { value: undefined, keyIsModified: true, isDeleted: true };
         }
         return { value: undefined, keyIsModified: false, isDeleted: false };
     }
