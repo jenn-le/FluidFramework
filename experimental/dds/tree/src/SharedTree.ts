@@ -106,6 +106,7 @@ import { IdCompressor, createSessionId } from './id-compressor';
 import { convertEditIds } from './IdConversion';
 import { MutableStringInterner } from './StringInterner';
 import { nilUuid } from './UuidUtilities';
+import { LeaderTracker } from './LeaderTracker';
 
 /**
  * The write format and associated options used to construct a `SharedTree`
