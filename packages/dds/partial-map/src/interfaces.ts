@@ -19,6 +19,8 @@ import { IBtreeLeafNode, ISerializedBtree } from "./persistedTypes";
 export enum SharedPartialMapEvents {
     ValueChanged = "valueChanged",
     Clear = "clear",
+    StartFlush = "startFlush",
+    Flush = "flush",
 }
 
 /**
@@ -36,7 +38,7 @@ export enum SharedPartialMapEvents {
      *
      * - `target` - The  itself.
      */
-    (event: SharedPartialMapEvents.ValueChanged, listener: (changed: string) => void);
+    (event: SharedPartialMapEvents.ValueChanged, listener: (changed: string, local: boolean) => void);
 
     /**
      * Emitted when the map is cleared.
@@ -48,6 +50,29 @@ export enum SharedPartialMapEvents {
      * - `target` -  itself.
      */
     (event: SharedPartialMapEvents.Clear, listener: (local: boolean) => void);
+
+    /**
+     * Emitted when the map's in-memory modifications begin being flushed to storage.
+     * Only emitted from the quorum leader.
+     *
+     * @remarks Listener parameters:
+     *
+     * - `local` - Whether the clear originated from this client.
+     *
+     * - `target` -  itself.
+     */
+    (event: SharedPartialMapEvents.StartFlush, listener: () => void);
+
+    /**
+     * Emitted when the map's in-memory modifications are flushed to storage.
+     *
+     * @remarks Listener parameters:
+     *
+     * - `local` - Whether the clear originated from this client.
+     *
+     * - `target` -  itself.
+     */
+    (event: SharedPartialMapEvents.Flush, listener: (isLeader: boolean) => void);
 }
 /**
  * TODO doc

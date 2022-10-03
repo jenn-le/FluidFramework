@@ -102,8 +102,6 @@ export class PartialMapFactory implements IChannelFactory {
 }
 
 const btreeOrder = 32;
-const cacheSizeHint = 5000;
-const changeCountToFlushAt = 1000;
 
 /**
  *
@@ -144,12 +142,15 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
     private btree: IChunkedBTree<any, ISerializedHandle>
         = undefined as unknown as IChunkedBTree<any, ISerializedHandle>;
 
-    private readonly sequencedState: SequencedState<any> = new SequencedState(cacheSizeHint);
+    private readonly sequencedState: SequencedState<any>;
 
     private readonly pendingState = new PendingState<any>();
 
     // Handles to pass to the GC whitelist
     private gcWhiteList: string[] = [];
+
+    private cacheSizeHint = 5000;
+    private flushThreshold = 1000;
 
     /**
      * Do not call the constructor. Instead, you should use the {@link SharedPartialMap.create | create method}.
@@ -163,7 +164,8 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         runtime: IFluidDataStoreRuntime,
         attributes: IChannelAttributes,
     ) {
-        super(id, runtime, attributes, "fluid_map_");
+        super(id, runtime, attributes, "fluid_partial_map_");
+        this.sequencedState = new SequencedState(this.cacheSizeHint);
         this.leaderTracker = new LeaderTracker(runtime);
         this.initializePersistedState(new ChunkedBTree(
             btreeOrder,
@@ -181,7 +183,6 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
 
     /**
      * The number of key/value pairs stored in the map.
-     * TODO
      */
     public get size() {
         throw new Error("Method not implemented");
@@ -322,8 +323,17 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         this.submitLocalMessage(op);
     }
 
+    public setFlushThreshold(modificationCount: number): void {
+        this.flushThreshold = modificationCount;
+    }
+
+    public setCacheSizeHint(cacheSizeHint: number): void {
+        this.cacheSizeHint = cacheSizeHint;
+    }
+
     private tryStartCompaction(): void {
-        if (this.sequencedState.unflushedChangeCount > changeCountToFlushAt) {
+        if (this.sequencedState.unflushedChangeCount > this.flushThreshold) {
+            this.emit(SharedPartialMapEvents.StartFlush);
             this.compact().catch((reason) => {});
         }
     }
@@ -464,23 +474,22 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
                 isSerializedHandle,
             );
             this.gcWhiteList = gcWhiteList;
+            this.emit(SharedPartialMapEvents.Flush, this.leaderTracker.isLeader());
         } else {
             switch (op.type) {
                 case OpType.Set:
                     this.sequencedState.set(op.key, this.serializer.parse(op.value), message.sequenceNumber);
                     if (local) {
                         this.pendingState.ackModify(op.key);
-                    } else {
-                        this.emit(SharedPartialMapEvents.ValueChanged, op.key, local);
                     }
+                    this.emit(SharedPartialMapEvents.ValueChanged, op.key, local);
                     break;
                 case OpType.Delete:
                     this.sequencedState.delete(op.key, message.sequenceNumber);
                     if (local) {
                         this.pendingState.ackModify(op.key);
-                    } else {
-                        this.emit(SharedPartialMapEvents.ValueChanged, op.key, local);
                     }
+                    this.emit(SharedPartialMapEvents.ValueChanged, op.key, local);
                     break;
                 case OpType.Clear: {
                     this.initializePersistedState(new ChunkedBTree(
@@ -491,9 +500,8 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
                     this.sequencedState.clear();
                     if (local) {
                         this.pendingState.ackClear();
-                    } else {
-                        this.emit(SharedPartialMapEvents.Clear, local);
                     }
+                    this.emit(SharedPartialMapEvents.Clear, local);
                     break;
                 }
                 default:
