@@ -481,15 +481,17 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
                     this.sequencedState.set(op.key, this.serializer.parse(op.value), message.sequenceNumber);
                     if (local) {
                         this.pendingState.ackModify(op.key);
+                    } else {
+                        this.emit(SharedPartialMapEvents.ValueChanged, op.key, local);
                     }
-                    this.emit(SharedPartialMapEvents.ValueChanged, op.key, local);
                     break;
                 case OpType.Delete:
                     this.sequencedState.delete(op.key, message.sequenceNumber);
                     if (local) {
                         this.pendingState.ackModify(op.key);
+                    } else {
+                        this.emit(SharedPartialMapEvents.ValueChanged, op.key, local);
                     }
-                    this.emit(SharedPartialMapEvents.ValueChanged, op.key, local);
                     break;
                 case OpType.Clear: {
                     this.initializePersistedState(new ChunkedBTree(
@@ -500,8 +502,9 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
                     this.sequencedState.clear();
                     if (local) {
                         this.pendingState.ackClear();
+                    } else {
+                        this.emit(SharedPartialMapEvents.Clear, local);
                     }
-                    this.emit(SharedPartialMapEvents.Clear, local);
                     break;
                 }
                 default:
