@@ -103,7 +103,7 @@ export class PartialMapFactory implements IChannelFactory {
 
 const btreeOrder = 32;
 const cacheSizeHint = 5000;
-const changeCountToFlushAt = 100;
+const changeCountToFlushAt = 1000;
 
 /**
  *
@@ -144,12 +144,12 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
     private btree: IChunkedBTree<any, ISerializedHandle>
         = undefined as unknown as IChunkedBTree<any, ISerializedHandle>;
 
-    private sequencedState: SequencedState<any> = new SequencedState(cacheSizeHint);
+    private readonly sequencedState: SequencedState<any> = new SequencedState(cacheSizeHint);
+
+    private readonly pendingState = new PendingState<any>();
 
     // Handles to pass to the GC whitelist
     private gcWhiteList: string[] = [];
-
-    private readonly pendingState = new PendingState<any>();
 
     /**
      * Do not call the constructor. Instead, you should use the {@link SharedPartialMap.create | create method}.
@@ -165,7 +165,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
     ) {
         super(id, runtime, attributes, "fluid_map_");
         this.leaderTracker = new LeaderTracker(runtime);
-        this.initializePartialMap(new ChunkedBTree(
+        this.initializePersistedState(new ChunkedBTree(
             btreeOrder,
             this.createHandle.bind(this),
             this.resolveHandle.bind(this)),
@@ -173,10 +173,9 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         this.leaderTracker.on("promoted", () => this.tryStartCompaction());
     }
 
-    private initializePartialMap(btree: IChunkedBTree<any, ISerializedHandle>): void {
+    private initializePersistedState(btree: IChunkedBTree<any, ISerializedHandle>): void {
         // If GC uses a blacklist, we need to go through the previous btree and GC all the blobs
         this.btree = btree;
-        this.sequencedState = new SequencedState(cacheSizeHint);
         this.gcWhiteList = [];
     }
 
@@ -246,7 +245,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
             this.pendingState.set(key, value);
         } else {
             // Emulate an immediate ack
-            this.sequencedState.set(key, value);
+            this.sequencedState.set(key, value, -1 /* disconnected, so no refSequenceNum */);
         }
 
         this.emit(SharedPartialMapEvents.ValueChanged, key, true);
@@ -278,7 +277,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
             this.pendingState.delete(key);
         } else {
             // Emulate an immediate ack
-            this.sequencedState.delete(key);
+            this.sequencedState.delete(key, -1 /* disconnected, so no refSequenceNum */);
         }
 
         this.emit(SharedPartialMapEvents.ValueChanged, key, true);
@@ -303,7 +302,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
             this.pendingState.clear();
         } else {
             // Emulate an immediate ack
-            this.initializePartialMap(new ChunkedBTree(
+            this.initializePersistedState(new ChunkedBTree(
                 btreeOrder,
                 this.createHandle.bind(this),
                 this.resolveHandle.bind(this)),
@@ -331,7 +330,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
 
     private async compact(): Promise<void> {
         assert(this.leaderTracker.isLeader(), "Non-leader should not evict cache.");
-        const [updates, deletes] = this.sequencedState.startFlush();
+        const [updates, deletes] = this.sequencedState.getFlushableChanges();
         const hive = await this.updateHive(updates, deletes);
 
         const evictionOp: CompactionOp = {
@@ -340,7 +339,6 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         };
 
         this.submitLocalMessage(evictionOp);
-        this.sequencedState.endFlush();
     }
 
     private async updateHive(
@@ -371,7 +369,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         telemetryContext?: ITelemetryContext | undefined,
     ): ISummaryTreeWithStats {
         assert(this.runtime.deltaManager.lastKnownSeqNumber === 0, "No ops should be processed before attachment.");
-        const [updates, deletes] = this.sequencedState.startFlush();
+        const [updates, deletes] = this.sequencedState.getFlushableChanges();
         const root = this.btree.flushSync(updates, deletes);
 
         const summary: ISharedPartialMapSummary<IBtreeLeafNode> = {
@@ -387,11 +385,9 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         trackState?: boolean | undefined,
         telemetryContext?: ITelemetryContext | undefined,
     ): Promise<ISummaryTreeWithStats> {
-        const [updates, deletes] = this.sequencedState.startFlush();
+        const [updates, deletes] = this.sequencedState.getFlushableChanges();
         const hive = await this.updateHive(updates, deletes);
-        const summary = createSingleBlobSummary(snapshotFileName, this.serializer.stringify(hive, this.handle));
-        this.sequencedState.endFlush();
-        return summary;
+        return createSingleBlobSummary(snapshotFileName, this.serializer.stringify(hive, this.handle));
     }
 
     private async createHandle(
@@ -426,7 +422,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
     protected async loadCore(storage: IChannelStorageService) {
         const json = await readAndParse<object>(storage, snapshotFileName);
         const hive = json as ISharedPartialMapSummary<ISerializedHandle | IBtreeLeafNode>;
-        this.initializePartialMap(
+        this.initializePersistedState(
             await ChunkedBTree.load(
                 hive.root,
                 this.createHandle.bind(this),
@@ -458,9 +454,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         const op = message.contents as PartialMapOp;
 
         if (op.type === OpType.Compact) {
-            if (local) {
-                this.sequencedState.endFlush();
-            }
+            this.sequencedState.flush(message.referenceSequenceNumber);
             const { root, gcWhiteList } = op.hive;
             // TODO: this could retain downloaded chunks that are the same
             this.btree = ChunkedBTree.loadSync(
@@ -473,7 +467,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         } else {
             switch (op.type) {
                 case OpType.Set:
-                    this.sequencedState.set(op.key, this.serializer.parse(op.value));
+                    this.sequencedState.set(op.key, this.serializer.parse(op.value), message.sequenceNumber);
                     if (local) {
                         this.pendingState.ackModify(op.key);
                     } else {
@@ -481,7 +475,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
                     }
                     break;
                 case OpType.Delete:
-                    this.sequencedState.delete(op.key);
+                    this.sequencedState.delete(op.key, message.sequenceNumber);
                     if (local) {
                         this.pendingState.ackModify(op.key);
                     } else {
@@ -489,11 +483,12 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
                     }
                     break;
                 case OpType.Clear: {
-                    this.initializePartialMap(new ChunkedBTree(
+                    this.initializePersistedState(new ChunkedBTree(
                         btreeOrder,
                         this.createHandle.bind(this),
                         this.resolveHandle.bind(this)),
                     );
+                    this.sequencedState.clear();
                     if (local) {
                         this.pendingState.ackClear();
                     } else {

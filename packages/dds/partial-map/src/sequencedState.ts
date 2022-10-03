@@ -3,75 +3,106 @@
  * Licensed under the MIT License.
  */
 
-import { assert } from "console";
-
 /**
  * An O(1) cache for recently accessed key/value pairs in SharedPartialMap.
  * It must only be populated with acked entries.
  */
 export class SequencedState<T> {
-    private readonly map = new Map<string, T>();
-    private updates = new Map<string, T>();
-    private deletes = new Set<string>();
-    private pendingFlushCount = 0;
+    // Contains reads and sequenced writes. Read (un-modified) values can be evicted at any time, and mutated values
+    // can be evicted after those values have been persisted via compaction.
+    private readonly allEntries = new Map<string, T>();
+
+    // A list of all mutations (sets/deletes) since the last compaction.
+    private readonly operations: [sequenceNumber: number, key: string, value?: T][] = [];
+
+    // A set of all mutated (set/deleted) keys since the last compaction.
+    private readonly modified = new Set<string>();
 
     constructor(private readonly cacheSizeHint: number) { }
 
     public get unflushedChangeCount(): number {
-        return this.updates.size + this.deletes.size;
+        return this.modified.size;
     }
 
     public cache(key: string, value: T): void {
-        this.map.set(key, value);
+        this.allEntries.set(key, value);
         this.evict();
     }
 
     public get(key: string): { value: T | undefined; keyIsModified: boolean; isDeleted: boolean; } {
-        const existing = this.map.get(key);
-        const isDeleted = existing === undefined && this.deletes.has(key);
+        const existing = this.allEntries.get(key);
+        const isDeleted = existing === undefined && this.modified.has(key) && !this.allEntries.has(key);
         return { value: existing, keyIsModified: existing !== undefined || isDeleted, isDeleted };
     }
 
-    public set(key: string, value: T): void {
-        if (this.deletes.has(key)) {
-            this.deletes.delete(key);
-        }
-
-        this.updates.set(key, value);
-        this.map.set(key, value);
+    public set(key: string, value: T, sequenceNumber: number): void {
+        this.modified.add(key);
+        this.operations.push([sequenceNumber, key, value]);
+        this.allEntries.set(key, value);
         this.evict();
     }
 
-    public delete(key: string): void {
-        this.map.delete(key);
-        this.deletes.add(key);
+    public delete(key: string, sequenceNumber: number): void {
+        this.modified.add(key);
+        this.operations.push([sequenceNumber, key]);
+        this.allEntries.delete(key);
+        this.evict();
     }
 
-    public startFlush(): [Map<string, T>, Set<string>] {
-        assert(this.pendingFlushCount === 0, "Reentrant flush.");
-        this.pendingFlushCount++;
-        const [updates, deletes] = [this.updates, this.deletes];
-        this.updates = new Map<string, T>();
-        this.deletes = new Set<string>();
+    public clear(): void {
+        this.operations.splice(0);
+        this.modified.clear();
+        this.allEntries.clear();
+    }
+
+    public getFlushableChanges(): [updates: Map<string, T>, deletes: Set<string>] {
+        const updates = new Map<string, T>();
+        const deletes = new Set<string>();
+        for (const mutation of this.operations) {
+            const [_, key, value] = mutation;
+            if (mutation.length === 3) {
+                deletes.delete(key);
+                updates.set(key, value as T);
+            } else {
+                deletes.add(key);
+                updates.delete(key);
+            }
+        }
         return [updates, deletes];
     }
 
-    public endFlush(): void {
-        this.pendingFlushCount--;
+    public flush(referenceSequenceNumber: number): void {
+        if (this.operations.length === 0) {
+            return;
+        }
+        this.modified.clear();
+        let opIndex = 0;
+        while (opIndex < this.operations.length) {
+            const [sequenceNumber] = this.operations[opIndex];
+            if (sequenceNumber > referenceSequenceNumber) {
+                break;
+            }
+            opIndex++;
+        }
+        this.operations.splice(0, opIndex);
+        for (const [_, key] of this.operations) {
+            this.modified.add(key);
+        }
     }
 
     private evict(): void {
-        if (this.pendingFlushCount <= 0
-            && this.map.size > this.cacheSizeHint
-            && this.unflushedChangeCount < this.map.size * 2) {
-            let toEvict = this.map.size - this.cacheSizeHint;
-            for (const key of this.map.keys()) {
-                if (!this.deletes.has(key) && !this.updates.has(key)) {
-                    this.map.delete(key);
-                    toEvict--;
-                }
-                if (toEvict === 0) {
-                    break;
+        if (this.allEntries.size > this.cacheSizeHint) {
+            const evictableCount = this.allEntries.size - this.unflushedChangeCount;
+            if (evictableCount > this.cacheSizeHint / 2) {
+                let toEvict = this.allEntries.size - this.cacheSizeHint;
+                for (const key of this.allEntries.keys()) {
+                    if (!this.modified.has(key)) {
+                        this.allEntries.delete(key);
+                        toEvict--;
+                    }
+                    if (toEvict === 0) {
+                        break;
+                    }
                 }
             }
         }
