@@ -88,4 +88,6 @@ export interface IChunkedBTree<T, THandle> {
         updates: Map<string, T>,
         deletes: Set<string>,
     ): ISerializedBtree<IBtreeLeafNode>;
+    evict(evictionCountHint: number);
+    workingSetSize(): number;
 }

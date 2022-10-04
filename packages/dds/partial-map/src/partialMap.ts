@@ -140,7 +140,10 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
     private readonly leaderTracker: LeaderTracker;
 
     private btree: IChunkedBTree<any, ISerializedHandle>
-        = undefined as unknown as IChunkedBTree<any, ISerializedHandle>;
+        = new ChunkedBTree(
+            btreeOrder,
+            this.createHandle.bind(this),
+            this.resolveHandle.bind(this));
 
     private readonly sequencedState: SequencedState<any>;
 
@@ -165,13 +168,12 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         attributes: IChannelAttributes,
     ) {
         super(id, runtime, attributes, "fluid_partial_map_");
-        this.sequencedState = new SequencedState(this.cacheSizeHint);
+        this.sequencedState = new SequencedState(this.cacheSizeHint, (evictionCountHint) => {
+            if (this.isAttached()) {
+                this.btree.evict(evictionCountHint);
+            }
+        });
         this.leaderTracker = new LeaderTracker(runtime);
-        this.initializePersistedState(new ChunkedBTree(
-            btreeOrder,
-            this.createHandle.bind(this),
-            this.resolveHandle.bind(this)),
-        );
         this.leaderTracker.on("promoted", () => this.tryStartCompaction());
     }
 
@@ -186,6 +188,13 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
      */
     public get size() {
         throw new Error("Method not implemented");
+    }
+
+    /**
+     * The number of entries retained in memory by the partial map.
+     */
+    public workingSetSize(): number {
+        return Math.max(this.sequencedState.size, this.btree.workingSetSize(), this.pendingState.size);
     }
 
     /**

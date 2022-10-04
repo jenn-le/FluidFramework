@@ -17,6 +17,10 @@ export class PendingState<T> {
     private pendingClearCount = 0;
     private latestClearUpdateNumber = -1;
 
+    public get size(): number {
+        return this.pendingKeys.size;
+    }
+
     get(key: string): { value: T | undefined; keyIsModified: boolean; isDeleted: boolean; } {
         const existing = this.pendingKeys.get(key);
         if (existing !== undefined) {

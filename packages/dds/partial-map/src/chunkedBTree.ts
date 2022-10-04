@@ -79,6 +79,14 @@ export class ChunkedBTree<T, THandle> implements IChunkedBTree<T, THandle> {
         };
 	}
 
+    public evict(evictionCountHint: number): void {
+        this.root.evict({ remaining: evictionCountHint });
+    }
+
+    public workingSetSize(): number {
+        return this.root.workingSetSize();
+    }
+
     public static async load<T, THandle>(
         { order, root }: ISerializedBtree<THandle | IBtreeLeafNode>,
         createHandle: (content: IBtreeLeafNode | IBtreeInteriorNode<THandle>) => Promise<THandle>,
@@ -129,8 +137,10 @@ interface IBTreeNode<T, THandle> {
         key: string,
         value: T,
     ): Promise<IBTreeNode<T, THandle> | [IBTreeNode<T, THandle>, string, IBTreeNode<T, THandle>]>;
-    delete(key: string): Promise<IBTreeNode<T, THandle>>; // "delet this"
+    delete(key: string): Promise<IBTreeNode<T, THandle>>;
     upload(): Promise<THandle>;
+    evict(evicted: { remaining: number; }): number;
+    workingSetSize(): number;
 }
 
 class BTreeNode<T, THandle> {
@@ -224,6 +234,25 @@ class BTreeNode<T, THandle> {
 
         return this.createHandle(worker);
     }
+
+    public evict(evicted: { remaining: number; }): number {
+        let unevictedEntriesBelow = 0;
+        for (const child of this.children) {
+            unevictedEntriesBelow += child.evict(evicted);
+            if (evicted.remaining <= 0) {
+                break;
+            }
+        }
+        return unevictedEntriesBelow;
+    }
+
+    public workingSetSize(): number {
+        let entriesBelow = 0;
+        for (const child of this.children) {
+            entriesBelow += child.workingSetSize();
+        }
+        return entriesBelow;
+    }
 }
 
 class LeafyBTreeNode<T, THandle> implements IBTreeNode<T, THandle> {
@@ -306,6 +335,14 @@ class LeafyBTreeNode<T, THandle> implements IBTreeNode<T, THandle> {
 
         return this.createHandle(drone);
     }
+
+    public evict(evicted: { remaining: number; }): number {
+        return this.keys.length;
+    }
+
+    public workingSetSize(): number {
+        return this.keys.length;
+    }
 }
 
 class LazyBTreeNode<T, THandle> implements IBTreeNode<T, THandle> {
@@ -321,7 +358,7 @@ class LazyBTreeNode<T, THandle> implements IBTreeNode<T, THandle> {
     private async load(): Promise<IBTreeNode<T, THandle>> {
         if (this.node === undefined) {
             const loadedNode = await this.resolveHandle(this.handle);
-            this.node = this.isDrone(loadedNode) ? new LeafyBTreeNode(
+            this.node = this.isLeafNode(loadedNode) ? new LeafyBTreeNode(
                     loadedNode.keys,
                     loadedNode.values,
                     this.order,
@@ -363,8 +400,25 @@ class LazyBTreeNode<T, THandle> implements IBTreeNode<T, THandle> {
         return this.handle;
     }
 
-    private isDrone(node: IBtreeInteriorNode<THandle> | IBtreeLeafNode): node is IBtreeLeafNode {
+    private isLeafNode(node: IBtreeInteriorNode<THandle> | IBtreeLeafNode): node is IBtreeLeafNode {
         return (node as IBtreeLeafNode).values !== undefined;
+    }
+
+    public evict(evicted: { remaining: number; }): number {
+        if (this.node === undefined) {
+            return 0;
+        }
+        const unevictedEntriesBelow = this.node.evict(evicted);
+        evicted.remaining -= unevictedEntriesBelow;
+        this.node = undefined;
+        return 0;
+    }
+
+    public workingSetSize(): number {
+        if (this.node === undefined) {
+            return 0;
+        }
+        return this.node.workingSetSize();
     }
 }
 

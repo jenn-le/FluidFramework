@@ -18,10 +18,16 @@ export class SequencedState<T> {
     // A set of all mutated (set/deleted) keys since the last compaction.
     private readonly modified = new Set<string>();
 
-    constructor(private readonly cacheSizeHint: number) { }
+    constructor(
+        private readonly cacheSizeHint: number,
+        private readonly onEvict: (evictionCountHint: number) => void) { }
 
     public get unflushedChangeCount(): number {
         return this.modified.size;
+    }
+
+    public get size(): number {
+        return this.allEntries.size;
     }
 
     public cache(key: string, value: T): void {
@@ -93,8 +99,9 @@ export class SequencedState<T> {
     private evict(): void {
         if (this.allEntries.size > this.cacheSizeHint) {
             const evictableCount = this.allEntries.size - this.unflushedChangeCount;
+            let toEvict = this.cacheSizeHint / 2;
             if (evictableCount > this.cacheSizeHint / 2) {
-                let toEvict = this.allEntries.size - this.cacheSizeHint;
+                this.onEvict(toEvict);
                 for (const key of this.allEntries.keys()) {
                     if (!this.modified.has(key)) {
                         this.allEntries.delete(key);
