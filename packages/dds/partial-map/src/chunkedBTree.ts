@@ -9,7 +9,7 @@ import { IChunkedBTree } from "./interfaces";
 import { IBtreeLeafNode, ISerializedBtree, IBtreeInteriorNode } from "./persistedTypes";
 
 export class ChunkedBTree<T, THandle> implements IChunkedBTree<T, THandle> {
-    private root: IBTreeNode<T, THandle>;
+    private readonly root: IBTreeNode<T, THandle>;
 
 	public constructor(
         public readonly order: number,
@@ -21,6 +21,10 @@ export class ChunkedBTree<T, THandle> implements IChunkedBTree<T, THandle> {
         this.root = root ?? new LeafyBTreeNode([], [], order, createHandle);
     }
 
+    private cloneWithNewRoot(newRoot: IBTreeNode<T, THandle>): ChunkedBTree<T, THandle> {
+        return new ChunkedBTree(this.order, this.createHandle, this.resolveHandle, newRoot);
+    }
+
 	public async get(key: string): Promise<T | undefined> {
         return this.root.get(key);
 	}
@@ -29,11 +33,12 @@ export class ChunkedBTree<T, THandle> implements IChunkedBTree<T, THandle> {
         return this.root.has(key);
     }
 
-    public async set(key: string, value: T): Promise<void> {
+    public async set(key: string, value: T): Promise<ChunkedBTree<T, THandle>> {
         const result = await this.root.set(key, value);
+        let newRoot: IBTreeNode<T, THandle>;
         if (Array.isArray(result)) {
             const [nodeA, k, nodeB] = result;
-            this.root = new BTreeNode(
+            newRoot = new BTreeNode(
                 [k],
                 [nodeA, nodeB],
                 this.order,
@@ -41,12 +46,14 @@ export class ChunkedBTree<T, THandle> implements IChunkedBTree<T, THandle> {
                 this.resolveHandle,
             );
         } else {
-            this.root = result;
+            newRoot = result;
         }
+        return this.cloneWithNewRoot(newRoot);
     }
 
-    public async delete(key: string): Promise<void> {
-        this.root = await this.root.delete(key);
+    public async delete(key: string): Promise<ChunkedBTree<T, THandle>> {
+        const newRoot = await this.root.delete(key);
+        return this.cloneWithNewRoot(newRoot);
     }
 
     public flushSync(updates: Iterable<[string, T]>, deletes: Iterable<string>): ISerializedBtree<IBtreeLeafNode> {
@@ -65,17 +72,19 @@ export class ChunkedBTree<T, THandle> implements IChunkedBTree<T, THandle> {
     }
 
 	public async flush(updates: Iterable<[string, T]>, deletes: Iterable<string>): Promise<ISerializedBtree<THandle>> {
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
+        let btree: ChunkedBTree<T, THandle> = this;
 		for (const [key, value] of updates) {
-            await this.set(key, value);
+            btree = await this.set(key, value);
         }
 
         for (const key of deletes) {
-            await this.delete(key);
+            btree = await this.delete(key);
         }
 
         return {
-            order: this.order,
-            root: await this.root.upload(),
+            order: btree.order,
+            root: await btree.root.upload(),
         };
 	}
 

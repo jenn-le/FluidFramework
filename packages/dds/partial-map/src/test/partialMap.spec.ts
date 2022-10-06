@@ -13,7 +13,7 @@ import {
     MockStorage,
 } from "@fluidframework/test-runtime-utils";
 import { SharedPartialMap, PartialMapFactory } from "../partialMap";
-import { IValueChanged } from "../interfaces";
+import { IValueChanged, SharedPartialMapEvents } from "../interfaces";
 
 function createConnectedMap(id: string, runtimeFactory: MockContainerRuntimeFactory): SharedPartialMap {
     const dataStoreRuntime = new MockFluidDataStoreRuntime();
@@ -185,9 +185,33 @@ describe("PartialMap", () => {
             containerRuntimeFactory = new MockContainerRuntimeFactory();
             // Create the first map
             map1 = createConnectedMap("map1", containerRuntimeFactory);
+            setCacheAndFlush(map1, 100, 50);
             // Create and connect a second map
             map2 = createConnectedMap("map2", containerRuntimeFactory);
+            setCacheAndFlush(map2, 100, 50);
         });
+
+        function setCacheAndFlush(map: SharedPartialMap, cacheSizeHint: number, flushThreshold: number): void {
+            map.setCacheSizeHint(cacheSizeHint);
+            map.setFlushThreshold(flushThreshold);
+        }
+
+        function setupEvents(map: SharedPartialMap): [events: SharedPartialMapEvents[], keys: string[]] {
+            const events: SharedPartialMapEvents[] = [];
+            const keys: string[] = [];
+            map.on(SharedPartialMapEvents.StartFlush, () => events.push(SharedPartialMapEvents.StartFlush));
+            map.on(SharedPartialMapEvents.Flush, (isLeader) => {
+                events.push(SharedPartialMapEvents.Flush);
+            });
+            map.on(SharedPartialMapEvents.ValueChanged, (key) => {
+                keys.push(key);
+                events.push(SharedPartialMapEvents.ValueChanged);
+            });
+            map.on(SharedPartialMapEvents.Clear, () => {
+                events.push(SharedPartialMapEvents.Clear);
+            });
+            return [events, keys];
+        }
 
         describe("API", () => {
             describe(".get()", () => {
@@ -422,6 +446,43 @@ describe("PartialMap", () => {
                     map1.set("testKey2", "testValue2");
                     assert.equal(await map1.get("testKey"), "testValue", "could not retrieve set key 1 after delete");
                     assert.equal(await map1.get("testKey2"), "testValue2", "could not retrieve set key 2 after delete");
+                });
+            });
+
+            describe("compaction", () => {
+                it("Can flush changes from the local client", async () => {
+                    const flushThreshold = 2;
+                    const runtimeFactory = new MockContainerRuntimeFactory();
+                    const map = createConnectedMap("map1", runtimeFactory);
+                    setCacheAndFlush(map, flushThreshold * 2, flushThreshold);
+                    const [events, keys] = setupEvents(map);
+
+                    let key = 0;
+                    for (let i = 0; i < flushThreshold + 1; i++, key++) {
+                        map.set(key.toString(), key);
+                    }
+
+                    assert.deepEqual(events.splice(0), [
+                        SharedPartialMapEvents.ValueChanged,
+                        SharedPartialMapEvents.ValueChanged,
+                        SharedPartialMapEvents.ValueChanged]);
+                    assert.equal(map.workingSetSize(), keys.length);
+
+                    runtimeFactory.processAllMessages();
+                    assert.deepEqual(events.splice(0), [SharedPartialMapEvents.StartFlush]);
+                    assert.equal(map.workingSetSize(), keys.length);
+
+                    const wasFlushing = await map.pendingFlushCompleted();
+                    assert(wasFlushing);
+
+                    runtimeFactory.processAllMessages();
+                    assert.deepEqual(events.splice(0), [SharedPartialMapEvents.Flush]);
+                    assert.equal(map.workingSetSize(), keys.length);
+
+                    for (let i = 0; i < flushThreshold; i++, key++) {
+                        map.set(key.toString(), key);
+                    }
+                    assert.equal(map.workingSetSize(), flushThreshold * 2);
                 });
             });
         });

@@ -53,5 +53,6 @@ export interface ClearOp {
 
 export interface CompactionOp {
     type: OpType.Compact;
-    hive: ISharedPartialMapSummary<ISerializedHandle>;
+    persistedState: ISharedPartialMapSummary<ISerializedHandle>;
+    refSequenceNumber: number;
 }

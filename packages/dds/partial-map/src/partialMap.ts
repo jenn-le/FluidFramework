@@ -155,6 +155,10 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
     private cacheSizeHint = 5000;
     private flushThreshold = 1000;
 
+    private refSequenceNumberOfLastFlush = -1;
+
+    private pendingFlushUpload: Promise<boolean> | undefined = undefined;
+
     /**
      * Do not call the constructor. Instead, you should use the {@link SharedPartialMap.create | create method}.
      *
@@ -340,27 +344,43 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         this.cacheSizeHint = cacheSizeHint;
     }
 
+    public async pendingFlushCompleted(): Promise<boolean> {
+        return this.pendingFlushUpload ?? Promise.resolve(false);
+    }
+
     private tryStartCompaction(): void {
         if (this.sequencedState.unflushedChangeCount > this.flushThreshold) {
             this.emit(SharedPartialMapEvents.StartFlush);
-            this.compact().catch((reason) => {});
+            this.pendingFlushUpload = this.compact();
         }
     }
 
-    private async compact(): Promise<void> {
+    private async compact(): Promise<boolean> {
         assert(this.leaderTracker.isLeader(), "Non-leader should not evict cache.");
         const [updates, deletes] = this.sequencedState.getFlushableChanges();
-        const hive = await this.updateHive(updates, deletes);
+        const refSequenceNumber = this.runtime.deltaManager.lastSequenceNumber;
+        let persistedState: ISharedPartialMapSummary<ISerializedHandle>;
+        try {
+            persistedState = await this.flushToNewBtree(updates, deletes);
+        } catch (error) {
+            // TODO: logging
+            this.pendingFlushUpload = undefined;
+            return false;
+        }
 
         const evictionOp: CompactionOp = {
             type: OpType.Compact,
-            hive,
+            persistedState,
+            refSequenceNumber,
         };
 
         this.submitLocalMessage(evictionOp);
+        assert(this.pendingFlushUpload !== undefined, "Pending flush should exist if local flush upload was started.");
+        this.pendingFlushUpload = undefined;
+        return true;
     }
 
-    private async updateHive(
+    private async flushToNewBtree(
         updates: Map<string, any>, deletes: Set<string>): Promise<ISharedPartialMapSummary<ISerializedHandle>> {
         const queen = await this.btree.flush(updates, deletes);
 
@@ -405,7 +425,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         telemetryContext?: ITelemetryContext | undefined,
     ): Promise<ISummaryTreeWithStats> {
         const [updates, deletes] = this.sequencedState.getFlushableChanges();
-        const hive = await this.updateHive(updates, deletes);
+        const hive = await this.flushToNewBtree(updates, deletes);
         return createSingleBlobSummary(snapshotFileName, this.serializer.stringify(hive, this.handle));
     }
 
@@ -473,17 +493,22 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         const op = message.contents as PartialMapOp;
 
         if (op.type === OpType.Compact) {
-            this.sequencedState.flush(message.referenceSequenceNumber);
-            const { root, gcWhiteList } = op.hive;
-            // TODO: this could retain downloaded chunks that are the same
-            this.btree = ChunkedBTree.loadSync(
-                root,
-                this.createHandle.bind(this),
-                this.resolveHandle.bind(this),
-                isSerializedHandle,
-            );
-            this.gcWhiteList = gcWhiteList;
-            this.emit(SharedPartialMapEvents.Flush, this.leaderTracker.isLeader());
+            // A split-brain scenario could result in multiple concurrent flushes being sent,
+            // and we should only process the latest one.
+            if (op.refSequenceNumber > this.refSequenceNumberOfLastFlush) {
+                this.refSequenceNumberOfLastFlush = op.refSequenceNumber;
+                this.sequencedState.flush(op.refSequenceNumber);
+                const { root, gcWhiteList } = op.persistedState;
+                // TODO: this could retain downloaded chunks that are the same
+                this.btree = ChunkedBTree.loadSync(
+                    root,
+                    this.createHandle.bind(this),
+                    this.resolveHandle.bind(this),
+                    isSerializedHandle,
+                );
+                this.gcWhiteList = gcWhiteList;
+                this.emit(SharedPartialMapEvents.Flush, this.leaderTracker.isLeader());
+            }
         } else {
             switch (op.type) {
                 case OpType.Set:
