@@ -410,7 +410,9 @@ class LazyBTreeNode<T, THandle> implements IBTreeNode<T, THandle> {
         }
         const unevictedEntriesBelow = this.node.evict(evicted);
         evicted.remaining -= unevictedEntriesBelow;
-        this.node = undefined;
+        if (evicted.remaining > 0) {
+            this.node = undefined;
+        }
         return 0;
     }
 

@@ -24,45 +24,45 @@ class MockHandleMap {
     }
 }
 
-function mockBTree<T>(order = 3): ChunkedBTree<T, number> {
+function mockBTree<T>(order = 3): [ChunkedBTree<T, number>, MockHandleMap] {
     const mockHandleMap = new MockHandleMap();
-    return new ChunkedBTree<T, number>(
+    return [new ChunkedBTree<T, number>(
         order,
         async (bee) => mockHandleMap.createHandle(bee),
         async (handle) => mockHandleMap.resolveHandle(handle),
-    );
+    ), mockHandleMap];
 }
 
 describe("BTree", () => {
     it("can set and read a single value", async () => {
-        const btree = mockBTree<number>();
+        const [btree] = mockBTree<number>();
         await btree.set("key", 42);
         assert.equal(await btree.get("key"), 42);
     });
 
     it("can has a single value", async () => {
-        const btree = mockBTree<string>();
+        const [btree] = mockBTree<string>();
         assert.equal(await btree.has("key"), false);
         await btree.set("key", "cheezburger");
         assert.equal(await btree.has("key"), true);
     });
 
     it("can delete a single value", async () => {
-        const btree = mockBTree<number>();
+        const [btree] = mockBTree<number>();
         await btree.set("key", 42);
         await btree.delete("key");
         assert.equal(await btree.has("key"), false);
     });
 
     it("can overwrite a single value", async () => {
-        const btree = mockBTree<number>();
+        const [btree] = mockBTree<number>();
         await btree.set("key", 42);
         await btree.set("key", 43);
         assert.equal(await btree.get("key"), 43);
     });
 
     it("can set many values", async () => {
-        const btree = mockBTree<string>();
+        const [btree] = mockBTree<string>();
         for (const key of manyKeys) {
             await btree.set(key, key);
         }
@@ -73,7 +73,7 @@ describe("BTree", () => {
     });
 
     it("can delete many values", async () => {
-        const btree = mockBTree<string>();
+        const [btree] = mockBTree<string>();
         for (const key of manyKeys) {
             await btree.set(key, key);
         }
@@ -84,26 +84,26 @@ describe("BTree", () => {
         }
     });
 
-    it("can load lazily", async () => {
-        const mockHandleMap = new MockHandleMap();
-        const btree = new ChunkedBTree<string, number>(
-            3,
-            async (bee) => mockHandleMap.createHandle(bee),
-            async (handle) => mockHandleMap.resolveHandle(handle),
-        );
-
-        for (const key of manyKeys) {
-            await btree.set(key, key);
-        }
-
+    async function flushAndLoad<T>(
+        btree: ChunkedBTree<T, number>, mockHandleMap: MockHandleMap): Promise<ChunkedBTree<T, number>> {
         const summary = await btree.flush([], []);
-        const loadedBTree = await ChunkedBTree.load<unknown, number>(
+        const loadedBTree = await ChunkedBTree.load<T, number>(
             summary,
             async (bee) => mockHandleMap.createHandle(bee),
             async (handle) => mockHandleMap.resolveHandle(handle),
             (handle): handle is number => typeof handle === "number",
         );
+        return loadedBTree;
+    }
 
+    it("can load lazily", async () => {
+        const [btree, mockHandleMap] = mockBTree<string>();
+
+        for (const key of manyKeys) {
+            await btree.set(key, key);
+        }
+
+        const loadedBTree = await flushAndLoad(btree, mockHandleMap);
         for (const key of manyKeys) {
             assert.equal(await loadedBTree.get(key), key);
         }
@@ -112,6 +112,49 @@ describe("BTree", () => {
             await btree.delete(key);
             assert.equal(await btree.has(key), false);
         }
+    });
+
+    function assertIsWithin(a: number, b: number, within: number): void {
+        assert(Math.abs(a - b) <= within);
+    }
+
+    it("can evict loaded nodes", async () => {
+        // eslint-disable-next-line prefer-const
+        let [btree, mockHandleMap] = mockBTree<string>();
+        assert.equal(btree.workingSetSize(), 0);
+
+        const keys: string[] = [];
+        for (let i = 0; i < 1000; i++) {
+            const key = i.toString();
+            keys.push(key);
+            await btree.set(key, key);
+        }
+
+        const readAllKeys = async () => {
+            for (const key of keys) {
+                assert.equal(await btree.get(key), key);
+            }
+        };
+
+        assert.equal(btree.workingSetSize(), keys.length);
+
+        btree.evict(keys.length);
+        assert.equal(btree.workingSetSize(), keys.length);
+
+        btree = await flushAndLoad(btree, mockHandleMap);
+        assert.equal(btree.workingSetSize(), 0);
+        await readAllKeys();
+        assert.equal(btree.workingSetSize(), keys.length);
+
+        btree.evict(keys.length);
+        assertIsWithin(btree.workingSetSize(), 0, btree.order);
+
+        await readAllKeys();
+        assert.equal(btree.workingSetSize(), keys.length);
+
+        const toEvict = Math.round(keys.length / 2);
+        btree.evict(toEvict);
+        assertIsWithin(btree.workingSetSize(), keys.length - toEvict, btree.order);
     });
 });
 
