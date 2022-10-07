@@ -157,7 +157,8 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
 
     private refSequenceNumberOfLastFlush = -1;
 
-    private pendingFlushUpload: Promise<boolean> | undefined = undefined;
+    // No pending flush | pending upload | awaiting flush ack
+    private pendingFlush: undefined | Promise<boolean> | null = undefined;
 
     /**
      * Do not call the constructor. Instead, you should use the {@link SharedPartialMap.create | create method}.
@@ -188,17 +189,14 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
     }
 
     /**
-     * The number of key/value pairs stored in the map.
-     */
-    public get size() {
-        throw new Error("Method not implemented");
-    }
-
-    /**
      * The number of entries retained in memory by the partial map.
      */
     public workingSetSize(): number {
         return Math.max(this.sequencedState.size, this.btree.workingSetSize(), this.pendingState.size);
+    }
+
+    public get storageBtreeOrder(): number {
+        return btreeOrder;
     }
 
     /**
@@ -345,13 +343,14 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
     }
 
     public async pendingFlushCompleted(): Promise<boolean> {
-        return this.pendingFlushUpload ?? Promise.resolve(false);
+        return this.pendingFlush ?? Promise.resolve(false);
     }
 
     private tryStartCompaction(): void {
-        if (this.sequencedState.unflushedChangeCount > this.flushThreshold) {
+        if (this.pendingFlush === undefined
+            && this.sequencedState.unflushedChangeCount > this.flushThreshold) {
             this.emit(SharedPartialMapEvents.StartFlush);
-            this.pendingFlushUpload = this.compact();
+            this.pendingFlush = this.compact();
         }
     }
 
@@ -364,7 +363,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
             persistedState = await this.flushToNewBtree(updates, deletes);
         } catch (error) {
             // TODO: logging
-            this.pendingFlushUpload = undefined;
+            this.pendingFlush = undefined;
             return false;
         }
 
@@ -375,8 +374,9 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         };
 
         this.submitLocalMessage(evictionOp);
-        assert(this.pendingFlushUpload !== undefined, "Pending flush should exist if local flush upload was started.");
-        this.pendingFlushUpload = undefined;
+        assert(this.pendingFlush !== undefined && this.pendingFlush !== null,
+            "Pending flush should exist if local flush upload was started.");
+        this.pendingFlush = null;
         return true;
     }
 
@@ -433,9 +433,9 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         content: IBtreeInteriorNode<ISerializedHandle> | IBtreeLeafNode): Promise<ISerializedHandle> {
         const serializedContents = this.serializer.stringify(content, this.handle);
         const buffer = stringToBuffer(serializedContents, "utf-8");
-        const editHandle = await this.runtime.uploadBlob(buffer);
-        const serialized: ISerializedHandle = this.serializer.encode(editHandle, this.handle) ??
-            fail("Edit chunk handle could not be serialized.");
+        const btreeNode = await this.runtime.uploadBlob(buffer);
+        const serialized: ISerializedHandle = this.serializer.encode(btreeNode, this.handle) ??
+            fail("Btree node could not be uploaded or serialized.");
 
         return serialized;
     }
@@ -443,8 +443,8 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
     private async resolveHandle(
         handle: ISerializedHandle | IBtreeLeafNode,
     ): Promise<IBtreeInteriorNode<ISerializedHandle> | IBtreeLeafNode> {
-        const editHandle: IFluidHandle<ArrayBufferLike> = this.serializer.decode(handle);
-        const serializedContents = bufferToString(await editHandle.get(), "utf-8");
+        const btreeNode: IFluidHandle<ArrayBufferLike> = this.serializer.decode(handle);
+        const serializedContents = bufferToString(await btreeNode.get(), "utf-8");
         const node: IBtreeInteriorNode<ISerializedHandle> | IBtreeLeafNode = this.serializer.parse(serializedContents);
         return node;
     }
@@ -493,6 +493,10 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         const op = message.contents as PartialMapOp;
 
         if (op.type === OpType.Compact) {
+            if (local) {
+                assert(this.pendingFlush === null, "Pending flush ack should have null state.");
+                this.pendingFlush = undefined;
+            }
             // A split-brain scenario could result in multiple concurrent flushes being sent,
             // and we should only process the latest one.
             if (op.refSequenceNumber > this.refSequenceNumberOfLastFlush) {

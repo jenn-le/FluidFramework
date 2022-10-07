@@ -4,7 +4,7 @@
  */
 
 import { strict as assert } from "assert";
-import { IFluidHandle } from "@fluidframework/core-interfaces";
+import { IFluidCodeDetails, IFluidHandle, IRequest } from "@fluidframework/core-interfaces";
 import { IGCTestProvider, runGCTests } from "@fluid-internal/test-dds-utils";
 import {
     MockFluidDataStoreRuntime,
@@ -12,8 +12,22 @@ import {
     MockSharedObjectServices,
     MockStorage,
 } from "@fluidframework/test-runtime-utils";
-import { SharedPartialMap, PartialMapFactory } from "../partialMap";
+import { DefaultSummaryConfiguration } from "@fluidframework/container-runtime";
+import { Container, Loader, waitContainerToCatchUp } from "@fluidframework/container-loader";
+import { requestFluidObject } from "@fluidframework/runtime-utils";
+import {
+	ChannelFactoryRegistry,
+	ITestFluidObject,
+	TestObjectProvider,
+	TestContainerRuntimeFactory,
+	TestFluidObjectFactory,
+	createAndAttachContainer,
+} from "@fluidframework/test-utils";
+import { LocalServerTestDriver } from "@fluidframework/test-drivers";
+import type { IHostLoader } from "@fluidframework/container-definitions";
+import { IContainerRuntimeBase } from "@fluidframework/runtime-definitions";
 import { IValueChanged, SharedPartialMapEvents } from "../interfaces";
+import { SharedPartialMap, PartialMapFactory } from "../partialMap";
 
 function createConnectedMap(id: string, runtimeFactory: MockContainerRuntimeFactory): SharedPartialMap {
     const dataStoreRuntime = new MockFluidDataStoreRuntime();
@@ -32,11 +46,84 @@ function createLocalMap(id: string): SharedPartialMap {
     return map;
 }
 
-// class TestSharedPartialMap extends SharedPartialMap {
-//     public testApplyStashedOp(content: any): MapLocalOpMetadata {
-//         return this.applyStashedOp(content) as MapLocalOpMetadata;
-//     }
-// }
+const TestDataStoreType = "@fluid-example/test-dataStore";
+
+/**
+ * Sets up and returns an object of components useful for testing SharedPartialMap with a local server.
+ * Required for tests that involve the uploadBlob API.
+ *
+ * Any TestObjectProvider created by this function will be reset after the test completes (via afterEach) hook.
+ */
+ export async function setUpLocalServerPartialMap(testObjectProvider?: TestObjectProvider):
+    Promise<{ map: SharedPartialMap; testObjectProvider: TestObjectProvider; }> {
+    const mapId = `partialMap`;
+	const factory = SharedPartialMap.getFactory();
+	const registry: ChannelFactoryRegistry = [[mapId, factory]];
+	const innerRequestHandler = async (request: IRequest, runtime: IContainerRuntimeBase) =>
+		runtime.IFluidHandleContext.resolveHandle(request);
+
+	const runtimeFactory = () =>
+		new TestContainerRuntimeFactory(
+			TestDataStoreType,
+			new TestFluidObjectFactory(registry),
+			{
+				enableOfflineLoad: true,
+				summaryOptions: {
+					summaryConfigOverrides: {
+						...DefaultSummaryConfiguration,
+						...{
+							minIdleTime: 1000, // Manually set idle times so some SharedTree tests don't timeout.
+							maxIdleTime: 1000,
+							maxTime: 1000 * 12,
+							initialSummarizerDelayMs: 0,
+						},
+					},
+				},
+			},
+			[innerRequestHandler],
+		);
+
+	const defaultCodeDetails: IFluidCodeDetails = {
+		package: "defaultTestPackage",
+		config: {},
+	};
+
+	function makeTestLoader(provider: TestObjectProvider): IHostLoader {
+		const fluidEntryPoint = runtimeFactory();
+		return provider.createLoader([[defaultCodeDetails, fluidEntryPoint]], {
+			options: { maxClientLeaveWaitTime: 1000 },
+		});
+	}
+
+	let provider: TestObjectProvider;
+	let container: Container;
+
+	if (testObjectProvider !== undefined) {
+		provider = testObjectProvider;
+		const driver = new LocalServerTestDriver();
+		const loader = makeTestLoader(provider);
+		// Once ILoaderOptions is specificable, this should use `provider.loadTestContainer` instead.
+		container = (await loader.resolve(
+			{ url: await driver.createContainerUrl(mapId) },
+		)) as Container;
+		await waitContainerToCatchUp(container);
+	} else {
+		const driver = new LocalServerTestDriver();
+		provider = new TestObjectProvider(Loader, driver, runtimeFactory);
+		// Once ILoaderOptions is specificable, this should use `provider.makeTestContainer` instead.
+		const loader = makeTestLoader(provider);
+		container = (await createAndAttachContainer(
+			defaultCodeDetails,
+			loader,
+			driver.createCreateNewRequest(mapId),
+		)) as Container;
+	}
+
+	const dataObject = await requestFluidObject<ITestFluidObject>(container, "/");
+	const map = await dataObject.getSharedObject<SharedPartialMap>(mapId);
+
+	return { map, testObjectProvider: provider };
+}
 
 describe("PartialMap", () => {
     describe("Local state", () => {
