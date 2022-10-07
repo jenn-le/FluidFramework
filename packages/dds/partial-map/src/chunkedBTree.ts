@@ -5,10 +5,10 @@
 
 import { fail } from "assert";
 import { assert } from "@fluidframework/common-utils";
-import { IChunkedBTree } from "./interfaces";
+import { IChunkedBtree } from "./interfaces";
 import { IBtreeLeafNode, ISerializedBtree, IBtreeInteriorNode } from "./persistedTypes";
 
-export class ChunkedBTree<T, THandle> implements IChunkedBTree<T, THandle> {
+export class ChunkedBtree<T, THandle> implements IChunkedBtree<T, THandle> {
     private readonly root: IBTreeNode<T, THandle>;
 
 	public constructor(
@@ -21,8 +21,8 @@ export class ChunkedBTree<T, THandle> implements IChunkedBTree<T, THandle> {
         this.root = root ?? new LeafyBTreeNode([], [], order, createHandle);
     }
 
-    private cloneWithNewRoot(newRoot: IBTreeNode<T, THandle>): ChunkedBTree<T, THandle> {
-        return new ChunkedBTree(this.order, this.createHandle, this.resolveHandle, newRoot);
+    private cloneWithNewRoot(newRoot: IBTreeNode<T, THandle>): ChunkedBtree<T, THandle> {
+        return new ChunkedBtree(this.order, this.createHandle, this.resolveHandle, newRoot);
     }
 
 	public async get(key: string): Promise<T | undefined> {
@@ -33,7 +33,7 @@ export class ChunkedBTree<T, THandle> implements IChunkedBTree<T, THandle> {
         return this.root.has(key);
     }
 
-    public async set(key: string, value: T): Promise<ChunkedBTree<T, THandle>> {
+    public async set(key: string, value: T): Promise<ChunkedBtree<T, THandle>> {
         const result = await this.root.set(key, value);
         let newRoot: IBTreeNode<T, THandle>;
         if (Array.isArray(result)) {
@@ -51,7 +51,7 @@ export class ChunkedBTree<T, THandle> implements IChunkedBTree<T, THandle> {
         return this.cloneWithNewRoot(newRoot);
     }
 
-    public async delete(key: string): Promise<ChunkedBTree<T, THandle>> {
+    public async delete(key: string): Promise<ChunkedBtree<T, THandle>> {
         const newRoot = await this.root.delete(key);
         return this.cloneWithNewRoot(newRoot);
     }
@@ -73,7 +73,7 @@ export class ChunkedBTree<T, THandle> implements IChunkedBTree<T, THandle> {
 
 	public async flush(updates: Iterable<[string, T]>, deletes: Iterable<string>): Promise<ISerializedBtree<THandle>> {
         // eslint-disable-next-line @typescript-eslint/no-this-alias
-        let btree: ChunkedBTree<T, THandle> = this;
+        let btree: ChunkedBtree<T, THandle> = this;
 		for (const [key, value] of updates) {
             btree = await this.set(key, value);
         }
@@ -101,16 +101,16 @@ export class ChunkedBTree<T, THandle> implements IChunkedBTree<T, THandle> {
         createHandle: (content: IBtreeLeafNode | IBtreeInteriorNode<THandle>) => Promise<THandle>,
         resolveHandle: (handle: THandle) => Promise<IBtreeLeafNode | IBtreeInteriorNode<THandle>>,
         isHandle: (handleOrNode: THandle | IBtreeLeafNode) => handleOrNode is THandle,
-    ): Promise<ChunkedBTree<T, THandle>> {
+    ): Promise<ChunkedBtree<T, THandle>> {
         if (isHandle(root)) {
-            return new ChunkedBTree(
+            return new ChunkedBtree(
                 order,
                 createHandle,
                 resolveHandle,
                 new LazyBTreeNode(root, order, createHandle, resolveHandle),
             );
         } else {
-            const btree = new ChunkedBTree<T, THandle>(order, createHandle, resolveHandle);
+            const btree = new ChunkedBtree<T, THandle>(order, createHandle, resolveHandle);
             assert(root.keys.length === root.values.length, "Malformed drone; should be same number of keys as values");
             for (const [i, key] of root.keys.entries()) {
                 await btree.set(key, root.values[i]);
@@ -125,9 +125,9 @@ export class ChunkedBTree<T, THandle> implements IChunkedBTree<T, THandle> {
         createHandle: (content: IBtreeLeafNode | IBtreeInteriorNode<THandle>) => Promise<THandle>,
         resolveHandle: (handle: THandle) => Promise<IBtreeLeafNode | IBtreeInteriorNode<THandle>>,
         isHandle: (handleOrNode: THandle | IBtreeLeafNode) => handleOrNode is THandle,
-    ): ChunkedBTree<T, THandle> {
+    ): ChunkedBtree<T, THandle> {
         if (isHandle(root)) {
-            return new ChunkedBTree(
+            return new ChunkedBtree(
                 order,
                 createHandle,
                 resolveHandle,

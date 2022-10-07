@@ -74,10 +74,11 @@ export enum SharedPartialMapEvents {
      */
     (event: SharedPartialMapEvents.Flush, listener: (isLeader: boolean) => void);
 }
+
 /**
- * TODO doc
+ * TODO docs
  */
-export interface IChunkedBTree<T, THandle> {
+export interface IChunkedBtree<T, THandle> {
     get(key: string): Promise<T | undefined>;
     has(key: string): Promise<boolean>;
     flush(

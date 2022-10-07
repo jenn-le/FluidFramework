@@ -26,6 +26,16 @@ export interface ClearOp {
 }
 
 // @public (undocumented)
+export interface CompactionOp {
+    // (undocumented)
+    persistedState: ISharedPartialMapSummary<ISerializedHandle>;
+    // (undocumented)
+    refSequenceNumber: number;
+    // (undocumented)
+    type: OpType.Compact;
+}
+
+// @public (undocumented)
 export interface DeleteOp {
     // (undocumented)
     key: string;
@@ -34,58 +44,42 @@ export interface DeleteOp {
 }
 
 // @public (undocumented)
-export type Honeycombs = string[];
+export type GCWhiteList = string[];
 
-// @public
-export interface IBeeTree<T, THandle> {
+// @public (undocumented)
+export interface IBtreeInteriorNode<THandle> {
     // (undocumented)
-    get(key: string): Promise<T | undefined>;
+    readonly children: readonly THandle[];
     // (undocumented)
-    has(key: string): Promise<boolean>;
-    // (undocumented)
-    summarize(updates: Iterable<[string, T]>, deletes: Iterable<string>): Promise<IQueenBee<THandle>>;
-    // (undocumented)
-    summarizeSync(updates: Iterable<[string, T]>, deletes: Iterable<string>): IQueenBee<IDroneBee>;
+    readonly keys: readonly string[];
 }
 
 // @public (undocumented)
-export interface IDroneBee {
+export interface IBtreeLeafNode {
     // (undocumented)
     readonly keys: readonly string[];
     // (undocumented)
     readonly values: readonly any[];
 }
 
-// @public (undocumented)
-export interface IHandleProvider {
-    // (undocumented)
-    getGcWhitelist(): string[];
-}
-
 // @public
-export interface IHashcache<T = Serializable> {
+export interface IChunkedBTree<T, THandle> {
     // (undocumented)
-    delete(key: string): boolean;
+    evict(evictionCountHint: number): any;
     // (undocumented)
-    flushUpdates(): [Map<string, T>, Set<string>];
+    flush(updates: Map<string, T>, deletes: Set<string>): Promise<ISerializedBtree<THandle>>;
     // (undocumented)
-    get(key: string): T | undefined;
+    flushSync(updates: Map<string, T>, deletes: Set<string>): ISerializedBtree<IBtreeLeafNode>;
     // (undocumented)
-    has(key: string): boolean;
+    get(key: string): Promise<T | undefined>;
     // (undocumented)
-    set(key: string, value: T): void;
+    has(key: string): Promise<boolean>;
+    // (undocumented)
+    workingSetSize(): number;
 }
 
 // @public (undocumented)
-export interface IHive {
-    // (undocumented)
-    readonly honeycombs: Honeycombs;
-    // (undocumented)
-    readonly queen: IQueenBee<ISerializedHandle>;
-}
-
-// @public (undocumented)
-export interface IQueenBee<THandle> {
+export interface ISerializedBtree<THandle> {
     // (undocumented)
     readonly order: number;
     // (undocumented)
@@ -94,8 +88,18 @@ export interface IQueenBee<THandle> {
 
 // @public
 export interface ISharedPartialMapEvents extends ISharedObjectEvents {
-    (event: SharedPartialMapEvents.ValueChanged, listener: (changed: string) => void): any;
+    (event: SharedPartialMapEvents.ValueChanged, listener: (changed: string, local: boolean) => void): any;
     (event: SharedPartialMapEvents.Clear, listener: (local: boolean) => void): any;
+    (event: SharedPartialMapEvents.StartFlush, listener: () => void): any;
+    (event: SharedPartialMapEvents.Flush, listener: (isLeader: boolean) => void): any;
+}
+
+// @public (undocumented)
+export interface ISharedPartialMapSummary<THandle> {
+    // (undocumented)
+    readonly gcWhiteList: GCWhiteList;
+    // (undocumented)
+    readonly root: ISerializedBtree<THandle>;
 }
 
 // @public
@@ -104,17 +108,11 @@ export interface IValueChanged {
 }
 
 // @public (undocumented)
-export interface IWorkerBee<THandle> {
-    // (undocumented)
-    readonly children: readonly THandle[];
-    // (undocumented)
-    readonly keys: readonly string[];
-}
-
-// @public (undocumented)
 export enum OpType {
     // (undocumented)
     Clear = 2,
+    // (undocumented)
+    Compact = 3,
     // (undocumented)
     Delete = 1,
     // (undocumented)
@@ -138,7 +136,7 @@ export class PartialMapFactory implements IChannelFactory {
 }
 
 // @public (undocumented)
-export type PartialMapOp = SetOp | DeleteOp | ClearOp;
+export type PartialMapOp = SetOp | DeleteOp | ClearOp | CompactionOp;
 
 // @public (undocumented)
 export interface SetOp {
@@ -158,8 +156,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
     protected applyStashedOp(content: any): unknown;
     clear(): void;
     static create(runtime: IFluidDataStoreRuntime, id?: string): SharedPartialMap;
-    delete(key: string): boolean;
-    // (undocumented)
+    delete(key: string): void;
     get<T = Serializable>(key: string): Promise<T | undefined>;
     // (undocumented)
     getAttachSummary(fullTree?: boolean | undefined, trackState?: boolean | undefined, telemetryContext?: ITelemetryContext | undefined): ISummaryTreeWithStats;
@@ -171,23 +168,32 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
     protected loadCore(storage: IChannelStorageService): Promise<void>;
     // @internal (undocumented)
     protected onDisconnect(): void;
+    // (undocumented)
+    pendingFlushCompleted(): Promise<boolean>;
     // @internal (undocumented)
     protected processCore(message: ISequencedDocumentMessage, local: boolean, localOpMetadata: unknown): void;
-    // @internal (undocumented)
-    protected reSubmitCore(content: any, localOpMetadata: unknown): void;
-    // (undocumented)
     set(key: string, value: any): this;
-    get size(): void;
+    // (undocumented)
+    setCacheSizeHint(cacheSizeHint: number): void;
+    // (undocumented)
+    setFlushThreshold(modificationCount: number): void;
+    // (undocumented)
+    get storageBtreeOrder(): number;
     // (undocumented)
     summarize(fullTree?: boolean | undefined, trackState?: boolean | undefined, telemetryContext?: ITelemetryContext | undefined): Promise<ISummaryTreeWithStats>;
     // @internal (undocumented)
     protected summarizeCore(serializer: IFluidSerializer, telemetryContext?: ITelemetryContext): ISummaryTreeWithStats;
+    workingSetSize(): number;
 }
 
 // @public (undocumented)
 export enum SharedPartialMapEvents {
     // (undocumented)
     Clear = "clear",
+    // (undocumented)
+    Flush = "flush",
+    // (undocumented)
+    StartFlush = "startFlush",
     // (undocumented)
     ValueChanged = "valueChanged"
 }

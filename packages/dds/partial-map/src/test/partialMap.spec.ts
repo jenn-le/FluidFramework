@@ -29,102 +29,6 @@ import { IContainerRuntimeBase } from "@fluidframework/runtime-definitions";
 import { IValueChanged, SharedPartialMapEvents } from "../interfaces";
 import { SharedPartialMap, PartialMapFactory } from "../partialMap";
 
-function createConnectedMap(id: string, runtimeFactory: MockContainerRuntimeFactory): SharedPartialMap {
-    const dataStoreRuntime = new MockFluidDataStoreRuntime();
-    const containerRuntime = runtimeFactory.createContainerRuntime(dataStoreRuntime);
-    const services = {
-        deltaConnection: containerRuntime.createDeltaConnection(),
-        objectStorage: new MockStorage(),
-    };
-    const map = new SharedPartialMap(id, dataStoreRuntime, PartialMapFactory.Attributes);
-    map.connect(services);
-    return map;
-}
-
-function createLocalMap(id: string): SharedPartialMap {
-    const map = new SharedPartialMap(id, new MockFluidDataStoreRuntime(), PartialMapFactory.Attributes);
-    return map;
-}
-
-const TestDataStoreType = "@fluid-example/test-dataStore";
-
-/**
- * Sets up and returns an object of components useful for testing SharedPartialMap with a local server.
- * Required for tests that involve the uploadBlob API.
- *
- * Any TestObjectProvider created by this function will be reset after the test completes (via afterEach) hook.
- */
- export async function setUpLocalServerPartialMap(testObjectProvider?: TestObjectProvider):
-    Promise<{ map: SharedPartialMap; testObjectProvider: TestObjectProvider; }> {
-    const mapId = `partialMap`;
-	const factory = SharedPartialMap.getFactory();
-	const registry: ChannelFactoryRegistry = [[mapId, factory]];
-	const innerRequestHandler = async (request: IRequest, runtime: IContainerRuntimeBase) =>
-		runtime.IFluidHandleContext.resolveHandle(request);
-
-	const runtimeFactory = () =>
-		new TestContainerRuntimeFactory(
-			TestDataStoreType,
-			new TestFluidObjectFactory(registry),
-			{
-				enableOfflineLoad: true,
-				summaryOptions: {
-					summaryConfigOverrides: {
-						...DefaultSummaryConfiguration,
-						...{
-							minIdleTime: 1000, // Manually set idle times so some SharedTree tests don't timeout.
-							maxIdleTime: 1000,
-							maxTime: 1000 * 12,
-							initialSummarizerDelayMs: 0,
-						},
-					},
-				},
-			},
-			[innerRequestHandler],
-		);
-
-	const defaultCodeDetails: IFluidCodeDetails = {
-		package: "defaultTestPackage",
-		config: {},
-	};
-
-	function makeTestLoader(provider: TestObjectProvider): IHostLoader {
-		const fluidEntryPoint = runtimeFactory();
-		return provider.createLoader([[defaultCodeDetails, fluidEntryPoint]], {
-			options: { maxClientLeaveWaitTime: 1000 },
-		});
-	}
-
-	let provider: TestObjectProvider;
-	let container: Container;
-
-	if (testObjectProvider !== undefined) {
-		provider = testObjectProvider;
-		const driver = new LocalServerTestDriver();
-		const loader = makeTestLoader(provider);
-		// Once ILoaderOptions is specificable, this should use `provider.loadTestContainer` instead.
-		container = (await loader.resolve(
-			{ url: await driver.createContainerUrl(mapId) },
-		)) as Container;
-		await waitContainerToCatchUp(container);
-	} else {
-		const driver = new LocalServerTestDriver();
-		provider = new TestObjectProvider(Loader, driver, runtimeFactory);
-		// Once ILoaderOptions is specificable, this should use `provider.makeTestContainer` instead.
-		const loader = makeTestLoader(provider);
-		container = (await createAndAttachContainer(
-			defaultCodeDetails,
-			loader,
-			driver.createCreateNewRequest(mapId),
-		)) as Container;
-	}
-
-	const dataObject = await requestFluidObject<ITestFluidObject>(container, "/");
-	const map = await dataObject.getSharedObject<SharedPartialMap>(mapId);
-
-	return { map, testObjectProvider: provider };
-}
-
 describe("PartialMap", () => {
     describe("Local state", () => {
         let map: SharedPartialMap;
@@ -263,6 +167,41 @@ describe("PartialMap", () => {
         });
     });
 
+    describe("Flushing", () => {
+        it("Can flush changes from the local client", async () => {
+            const flushThreshold = 2;
+            const cacheSizeHint = flushThreshold * 2;
+            const { map, testObjectProvider } = await setUpLocalServerPartialMap();
+            setCacheAndFlush(map, cacheSizeHint, flushThreshold);
+            const [events, keys] = setupEvents(map);
+
+            let key = 0;
+            for (let i = 0; i < flushThreshold + 1; i++, key++) {
+                map.set(key.toString(), key);
+            }
+
+            assert.deepEqual(events.splice(0), [
+                SharedPartialMapEvents.ValueChanged,
+                SharedPartialMapEvents.ValueChanged,
+                SharedPartialMapEvents.ValueChanged]);
+            assert.equal(map.workingSetSize(), keys.length);
+
+            await testObjectProvider.ensureSynchronized();
+            assert.deepEqual(events.splice(0), [SharedPartialMapEvents.StartFlush, SharedPartialMapEvents.Flush]);
+            assert.equal(map.workingSetSize(), keys.length);
+
+            for (let i = 0; i < flushThreshold; i++, key++) {
+                map.set(key.toString(), key);
+            }
+            assert(map.workingSetSize() <= cacheSizeHint);
+
+            for (let i = 0; i < cacheSizeHint; i++, key++) {
+                map.set(key.toString(), key);
+            }
+            assert.equal(map.workingSetSize(), cacheSizeHint);
+        });
+    });
+
     describe("Connected state", () => {
         let containerRuntimeFactory: MockContainerRuntimeFactory;
         let map1: SharedPartialMap;
@@ -277,28 +216,6 @@ describe("PartialMap", () => {
             map2 = createConnectedMap("map2", containerRuntimeFactory);
             setCacheAndFlush(map2, 100, 50);
         });
-
-        function setCacheAndFlush(map: SharedPartialMap, cacheSizeHint: number, flushThreshold: number): void {
-            map.setCacheSizeHint(cacheSizeHint);
-            map.setFlushThreshold(flushThreshold);
-        }
-
-        function setupEvents(map: SharedPartialMap): [events: SharedPartialMapEvents[], keys: string[]] {
-            const events: SharedPartialMapEvents[] = [];
-            const keys: string[] = [];
-            map.on(SharedPartialMapEvents.StartFlush, () => events.push(SharedPartialMapEvents.StartFlush));
-            map.on(SharedPartialMapEvents.Flush, (isLeader) => {
-                events.push(SharedPartialMapEvents.Flush);
-            });
-            map.on(SharedPartialMapEvents.ValueChanged, (key) => {
-                keys.push(key);
-                events.push(SharedPartialMapEvents.ValueChanged);
-            });
-            map.on(SharedPartialMapEvents.Clear, () => {
-                events.push(SharedPartialMapEvents.Clear);
-            });
-            return [events, keys];
-        }
 
         describe("API", () => {
             describe(".get()", () => {
@@ -535,43 +452,6 @@ describe("PartialMap", () => {
                     assert.equal(await map1.get("testKey2"), "testValue2", "could not retrieve set key 2 after delete");
                 });
             });
-
-            describe("compaction", () => {
-                it("Can flush changes from the local client", async () => {
-                    const flushThreshold = 2;
-                    const runtimeFactory = new MockContainerRuntimeFactory();
-                    const map = createConnectedMap("map1", runtimeFactory);
-                    setCacheAndFlush(map, flushThreshold * 2, flushThreshold);
-                    const [events, keys] = setupEvents(map);
-
-                    let key = 0;
-                    for (let i = 0; i < flushThreshold + 1; i++, key++) {
-                        map.set(key.toString(), key);
-                    }
-
-                    assert.deepEqual(events.splice(0), [
-                        SharedPartialMapEvents.ValueChanged,
-                        SharedPartialMapEvents.ValueChanged,
-                        SharedPartialMapEvents.ValueChanged]);
-                    assert.equal(map.workingSetSize(), keys.length);
-
-                    runtimeFactory.processAllMessages();
-                    assert.deepEqual(events.splice(0), [SharedPartialMapEvents.StartFlush]);
-                    assert.equal(map.workingSetSize(), keys.length);
-
-                    const wasFlushing = await map.pendingFlushCompleted();
-                    assert(wasFlushing);
-
-                    runtimeFactory.processAllMessages();
-                    assert.deepEqual(events.splice(0), [SharedPartialMapEvents.Flush]);
-                    assert.equal(map.workingSetSize(), keys.length);
-
-                    for (let i = 0; i < flushThreshold; i++, key++) {
-                        map.set(key.toString(), key);
-                    }
-                    assert.equal(map.workingSetSize(), flushThreshold * 2);
-                });
-            });
         });
     });
 
@@ -638,3 +518,121 @@ describe("PartialMap", () => {
         runGCTests(GCSharedPartialMapProvider);
     });
 });
+
+function createConnectedMap(id: string, runtimeFactory: MockContainerRuntimeFactory): SharedPartialMap {
+    const dataStoreRuntime = new MockFluidDataStoreRuntime();
+    const containerRuntime = runtimeFactory.createContainerRuntime(dataStoreRuntime);
+    const services = {
+        deltaConnection: containerRuntime.createDeltaConnection(),
+        objectStorage: new MockStorage(),
+    };
+    const map = new SharedPartialMap(id, dataStoreRuntime, PartialMapFactory.Attributes);
+    map.connect(services);
+    return map;
+}
+
+function createLocalMap(id: string): SharedPartialMap {
+    const map = new SharedPartialMap(id, new MockFluidDataStoreRuntime(), PartialMapFactory.Attributes);
+    return map;
+}
+
+const TestDataStoreType = "@fluid-example/test-dataStore";
+
+/**
+ * Sets up and returns an object of components useful for testing SharedPartialMap with a local server.
+ * Required for tests that involve the uploadBlob API.
+ *
+ * Any TestObjectProvider created by this function will be reset after the test completes (via afterEach) hook.
+ */
+ export async function setUpLocalServerPartialMap(testObjectProvider?: TestObjectProvider):
+    Promise<{ map: SharedPartialMap; testObjectProvider: TestObjectProvider; }> {
+    const mapId = `partialMap`;
+	const factory = SharedPartialMap.getFactory();
+	const registry: ChannelFactoryRegistry = [[mapId, factory]];
+	const innerRequestHandler = async (request: IRequest, runtime: IContainerRuntimeBase) =>
+		runtime.IFluidHandleContext.resolveHandle(request);
+
+	const runtimeFactory = () =>
+		new TestContainerRuntimeFactory(
+			TestDataStoreType,
+			new TestFluidObjectFactory(registry),
+			{
+				enableOfflineLoad: true,
+				summaryOptions: {
+					summaryConfigOverrides: {
+						...DefaultSummaryConfiguration,
+						...{
+							minIdleTime: 1000, // Manually set idle times so some SharedTree tests don't timeout.
+							maxIdleTime: 1000,
+							maxTime: 1000 * 12,
+							initialSummarizerDelayMs: 0,
+						},
+					},
+				},
+			},
+			[innerRequestHandler],
+		);
+
+	const defaultCodeDetails: IFluidCodeDetails = {
+		package: "defaultTestPackage",
+		config: {},
+	};
+
+	function makeTestLoader(testProvider: TestObjectProvider): IHostLoader {
+		const fluidEntryPoint = runtimeFactory();
+		return testProvider.createLoader([[defaultCodeDetails, fluidEntryPoint]], {
+			options: { maxClientLeaveWaitTime: 1000 },
+		});
+	}
+
+	let provider: TestObjectProvider;
+	let container: Container;
+
+	if (testObjectProvider !== undefined) {
+		provider = testObjectProvider;
+		const driver = new LocalServerTestDriver();
+		const loader = makeTestLoader(provider);
+		// Once ILoaderOptions is specificable, this should use `provider.loadTestContainer` instead.
+		container = (await loader.resolve(
+			{ url: await driver.createContainerUrl(mapId) },
+		)) as Container;
+		await waitContainerToCatchUp(container);
+	} else {
+		const driver = new LocalServerTestDriver();
+		provider = new TestObjectProvider(Loader, driver, runtimeFactory);
+		// Once ILoaderOptions is specificable, this should use `provider.makeTestContainer` instead.
+		const loader = makeTestLoader(provider);
+		container = (await createAndAttachContainer(
+			defaultCodeDetails,
+			loader,
+			driver.createCreateNewRequest(mapId),
+		)) as Container;
+	}
+
+	const dataObject = await requestFluidObject<ITestFluidObject>(container, "/");
+	const map = await dataObject.getSharedObject<SharedPartialMap>(mapId);
+
+	return { map, testObjectProvider: provider };
+}
+
+function setCacheAndFlush(map: SharedPartialMap, cacheSizeHint: number, flushThreshold: number): void {
+    map.setCacheSizeHint(cacheSizeHint);
+    map.setFlushThreshold(flushThreshold);
+}
+
+function setupEvents(map: SharedPartialMap): [events: SharedPartialMapEvents[], keys: string[]] {
+    const events: SharedPartialMapEvents[] = [];
+    const keys: string[] = [];
+    map.on(SharedPartialMapEvents.StartFlush, () => events.push(SharedPartialMapEvents.StartFlush));
+    map.on(SharedPartialMapEvents.Flush, (isLeader) => {
+        events.push(SharedPartialMapEvents.Flush);
+    });
+    map.on(SharedPartialMapEvents.ValueChanged, (key) => {
+        keys.push(key);
+        events.push(SharedPartialMapEvents.ValueChanged);
+    });
+    map.on(SharedPartialMapEvents.Clear, () => {
+        events.push(SharedPartialMapEvents.Clear);
+    });
+    return [events, keys];
+}

@@ -9,17 +9,17 @@
  */
 export class SequencedState<T> {
     // Contains reads and sequenced writes. Read (un-modified) values can be evicted at any time, and mutated values
-    // can be evicted after those values have been persisted via compaction.
+    // can be evicted after those values have been persisted via flush.
     private readonly allEntries = new Map<string, T>();
 
-    // A list of all mutations (sets/deletes) since the last compaction.
+    // A list of all mutations (sets/deletes) since the last flush.
     private readonly operations: [sequenceNumber: number, key: string, value?: T][] = [];
 
-    // A set of all mutated (set/deleted) keys since the last compaction.
+    // A set of all mutated (set/deleted) keys since the last flush.
     private readonly modified = new Set<string>();
 
     constructor(
-        private readonly cacheSizeHint: number,
+        private cacheSizeHint: number,
         private readonly onEvict: (evictionCountHint: number) => void) { }
 
     public get unflushedChangeCount(): number {
@@ -28,6 +28,10 @@ export class SequencedState<T> {
 
     public get size(): number {
         return this.allEntries.size;
+    }
+
+    public setCacheSizeHint(cacheSizeHint: number) {
+        this.cacheSizeHint = cacheSizeHint;
     }
 
     public cache(key: string, value: T): void {

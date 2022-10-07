@@ -4,7 +4,7 @@
  */
 
 import { strict as assert } from "assert";
-import { ChunkedBTree } from "../chunkedBTree";
+import { ChunkedBtree } from "../chunkedBTree";
 import { IBtreeLeafNode, IBtreeInteriorNode } from "../persistedTypes";
 
 class MockHandleMap {
@@ -24,9 +24,9 @@ class MockHandleMap {
     }
 }
 
-function mockBTree<T>(order = 3): [ChunkedBTree<T, number>, MockHandleMap] {
+function mockBTree<T>(order = 3): [ChunkedBtree<T, number>, MockHandleMap] {
     const mockHandleMap = new MockHandleMap();
-    return [new ChunkedBTree<T, number>(
+    return [new ChunkedBtree<T, number>(
         order,
         async (bee) => mockHandleMap.createHandle(bee),
         async (handle) => mockHandleMap.resolveHandle(handle),
@@ -85,9 +85,9 @@ describe("BTree", () => {
     });
 
     async function flushAndLoad<T>(
-        btree: ChunkedBTree<T, number>, mockHandleMap: MockHandleMap): Promise<ChunkedBTree<T, number>> {
+        btree: ChunkedBtree<T, number>, mockHandleMap: MockHandleMap): Promise<ChunkedBtree<T, number>> {
         const summary = await btree.flush([], []);
-        const loadedBTree = await ChunkedBTree.load<T, number>(
+        const loadedBTree = await ChunkedBtree.load<T, number>(
             summary,
             async (bee) => mockHandleMap.createHandle(bee),
             async (handle) => mockHandleMap.resolveHandle(handle),

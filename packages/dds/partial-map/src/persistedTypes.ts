@@ -31,10 +31,10 @@ export enum OpType {
     Set,
     Delete,
     Clear,
-    Compact,
+    Flush,
 }
 
-export type PartialMapOp = SetOp | DeleteOp | ClearOp | CompactionOp;
+export type PartialMapOp = SetOp | DeleteOp | ClearOp | FlushOp;
 
 export interface SetOp {
     type: OpType.Set;
@@ -51,8 +51,8 @@ export interface ClearOp {
     type: OpType.Clear;
 }
 
-export interface CompactionOp {
-    type: OpType.Compact;
+export interface FlushOp {
+    type: OpType.Flush;
     persistedState: ISharedPartialMapSummary<ISerializedHandle>;
     refSequenceNumber: number;
 }
