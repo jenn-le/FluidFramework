@@ -4,7 +4,7 @@
  */
 
 import { ISharedObjectEvents } from "@fluidframework/shared-object-base";
-import { IBtreeLeafNode, ISerializedBtree } from "./persistedTypes";
+import { IBtreeLeafNode, IBtreeUpdate, ISerializedBtree } from "./persistedTypes";
 
 /**
  * Type of "valueChanged" event parameter.
@@ -79,16 +79,33 @@ export enum SharedPartialMapEvents {
  * TODO docs
  */
 export interface IChunkedBtree<T, THandle> {
+    order: number;
+
     get(key: string): Promise<T | undefined>;
+
     has(key: string): Promise<boolean>;
+
+    clear(): IChunkedBtree<T, THandle>;
+
     flush(
         updates: Map<string, T>,
         deletes: Set<string>,
-    ): Promise<ISerializedBtree<THandle>>;
+    ): Promise<{
+        readonly newRoot: THandle;
+        readonly newHandles: THandle[];
+        readonly deletedHandles: THandle[];
+    }>;
+
     flushSync(
         updates: Map<string, T>,
         deletes: Set<string>,
-    ): ISerializedBtree<IBtreeLeafNode>;
+    ): ISerializedBtree<IBtreeLeafNode, THandle>;
+
+    update(update: IBtreeUpdate<THandle>): IChunkedBtree<T, THandle>;
+
+    getAllHandles(): THandle[];
+
     evict(evictionCountHint: number);
+
     workingSetSize(): number;
 }

@@ -39,7 +39,7 @@ import {
     PartialMapOp,
     SetOp,
 } from "./persistedTypes";
-import { ChunkedBtree } from "./chunkedBTree";
+import { ChunkedBtree, Handler } from "./chunkedBTree";
 import { LeaderTracker } from "./leaderTracker";
 import { PendingState } from "./pendingState";
 
@@ -141,17 +141,14 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
     private readonly leaderTracker: LeaderTracker;
 
     private btree: IChunkedBtree<any, ISerializedHandle>
-        = new ChunkedBtree(
+        = ChunkedBtree.create(
             btreeOrder,
-            this.createHandle.bind(this),
-            this.resolveHandle.bind(this));
+            this.createHandler(),
+        );
 
     private readonly sequencedState: SequencedState<any>;
 
     private readonly pendingState = new PendingState<any>();
-
-    // Handles to pass to the GC whitelist
-    private gcWhiteList: string[] = [];
 
     private flushThreshold = 1000;
 
@@ -180,12 +177,6 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         });
         this.leaderTracker = new LeaderTracker(runtime);
         this.leaderTracker.on("promoted", () => this.tryStartFlush());
-    }
-
-    private initializePersistedState(btree: IChunkedBtree<any, ISerializedHandle>): void {
-        // If GC uses a blacklist, we need to go through the previous btree and GC all the blobs
-        this.btree = btree;
-        this.gcWhiteList = [];
     }
 
     /**
@@ -255,6 +246,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
 
         if (this.isAttached()) {
             this.pendingState.set(key, value);
+            this.sequencedState.evict();
         } else {
             // Emulate an immediate ack
             this.sequencedState.set(key, value, -1 /* disconnected, so no refSequenceNum */);
@@ -314,11 +306,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
             this.pendingState.clear();
         } else {
             // Emulate an immediate ack
-            this.initializePersistedState(new ChunkedBtree(
-                btreeOrder,
-                this.createHandle.bind(this),
-                this.resolveHandle.bind(this)),
-            );
+            this.btree = this.btree.clear();
         }
 
         this.emit(SharedPartialMapEvents.Clear, true);
@@ -358,9 +346,11 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         assert(this.leaderTracker.isLeader(), "Non-leader should not evict cache.");
         const [updates, deletes] = this.sequencedState.getFlushableChanges();
         const refSequenceNumber = this.runtime.deltaManager.lastSequenceNumber;
-        let persistedState: ISharedPartialMapSummary<ISerializedHandle>;
+        let newRoot: ISerializedHandle;
+        let newHandles: ISerializedHandle[];
+        let deletedHandles: ISerializedHandle[];
         try {
-            persistedState = await this.flushToNewBtree(updates, deletes);
+            ({ newRoot, newHandles, deletedHandles } = await this.btree.flush(updates, deletes));
         } catch (error) {
             // TODO: logging
             this.pendingFlush = undefined;
@@ -369,7 +359,11 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
 
         const evictionOp: FlushOp = {
             type: OpType.Flush,
-            persistedState,
+            update: {
+                newRoot,
+                newHandles,
+                deletedHandles,
+            },
             refSequenceNumber,
         };
 
@@ -378,17 +372,6 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
             "Pending flush should exist if local flush upload was started.");
         this.pendingFlush = null;
         return true;
-    }
-
-    private async flushToNewBtree(
-        updates: Map<string, any>, deletes: Set<string>): Promise<ISharedPartialMapSummary<ISerializedHandle>> {
-        const newSerializedBtree = await this.btree.flush(updates, deletes);
-
-        const persistedState: ISharedPartialMapSummary<ISerializedHandle> = {
-            root: newSerializedBtree,
-            gcWhiteList: this.gcWhiteList,
-        };
-        return persistedState;
     }
 
     /**
@@ -411,9 +394,8 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         const [updates, deletes] = this.sequencedState.getFlushableChanges();
         const root = this.btree.flushSync(updates, deletes);
 
-        const summary: ISharedPartialMapSummary<IBtreeLeafNode> = {
-            root,
-            gcWhiteList: this.gcWhiteList,
+        const summary: ISharedPartialMapSummary<IBtreeLeafNode, ISerializedHandle> = {
+            btree: root,
         };
 
         return createSingleBlobSummary(snapshotFileName, this.serializer.stringify(summary, this.handle));
@@ -425,33 +407,38 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         telemetryContext?: ITelemetryContext | undefined,
     ): Promise<ISummaryTreeWithStats> {
         const [updates, deletes] = this.sequencedState.getFlushableChanges();
-        const hive = await this.flushToNewBtree(updates, deletes);
-        return createSingleBlobSummary(snapshotFileName, this.serializer.stringify(hive, this.handle));
+        const update = await this.btree.flush(updates, deletes);
+        const newBtree = this.btree.update(update);
+        const summary: ISharedPartialMapSummary<ISerializedHandle, ISerializedHandle> = {
+            btree: { root: update.newRoot, order: this.btree.order, handles: newBtree.getAllHandles() },
+        };
+        return createSingleBlobSummary(snapshotFileName, this.serializer.stringify(summary, this.handle));
     }
 
-    private async createHandle(
-        content: IBtreeInteriorNode<ISerializedHandle> | IBtreeLeafNode): Promise<ISerializedHandle> {
-        const serializedContents = this.serializer.stringify(content, this.handle);
-        const buffer = stringToBuffer(serializedContents, "utf-8");
-        const btreeNode = await this.runtime.uploadBlob(buffer);
-        const serialized: ISerializedHandle = this.serializer.encode(btreeNode, this.handle) ??
-            fail("Btree node could not be uploaded or serialized.");
-
-        return serialized;
-    }
-
-    private async resolveHandle(
-        handle: ISerializedHandle | IBtreeLeafNode,
-    ): Promise<IBtreeInteriorNode<ISerializedHandle> | IBtreeLeafNode> {
-        const btreeNode: IFluidHandle<ArrayBufferLike> = this.serializer.decode(handle);
-        const serializedContents = bufferToString(await btreeNode.get(), "utf-8");
-        const node: IBtreeInteriorNode<ISerializedHandle> | IBtreeLeafNode = this.serializer.parse(serializedContents);
-        return node;
+    private createHandler(): Handler<ISerializedHandle> {
+        return {
+            createHandle: async (content: IBtreeInteriorNode<ISerializedHandle> | IBtreeLeafNode) => {
+                const serializedContents = this.serializer.stringify(content, this.handle);
+                const buffer = stringToBuffer(serializedContents, "utf-8");
+                const btreeNode = await this.runtime.uploadBlob(buffer);
+                const serialized: ISerializedHandle = this.serializer.encode(btreeNode, this.handle) ??
+                fail("Btree node could not be uploaded or serialized.");
+                return serialized;
+            },
+            resolveHandle: async (handle: ISerializedHandle | IBtreeLeafNode) => {
+                const btreeNode: IFluidHandle<ArrayBufferLike> = this.serializer.decode(handle);
+                const serializedContents = bufferToString(await btreeNode.get(), "utf-8");
+                const node: IBtreeInteriorNode<ISerializedHandle> | IBtreeLeafNode
+                    = this.serializer.parse(serializedContents);
+                return node;
+            },
+            compareHandles: ({ url: a }, { url: b }) => a < b ? -1 : a === b ? 0 : 1,
+        };
     }
 
     public getGCData(fullGC?: boolean | undefined): IGarbageCollectionData {
         // TODO: don't use blob manager, then this method becomes a noop
-        return { gcNodes: { "/": this.gcWhiteList } };
+        return { gcNodes: { "/": [] } };
     }
 
     /**
@@ -460,14 +447,11 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
      */
     protected async loadCore(storage: IChannelStorageService) {
         const json = await readAndParse<object>(storage, snapshotFileName);
-        const hive = json as ISharedPartialMapSummary<ISerializedHandle | IBtreeLeafNode>;
-        this.initializePersistedState(
-            await ChunkedBtree.load(
-                hive.root,
-                this.createHandle.bind(this),
-                this.resolveHandle.bind(this),
-                isSerializedHandle,
-            ),
+        const summary = json as ISharedPartialMapSummary<ISerializedHandle | IBtreeLeafNode, ISerializedHandle>;
+        this.btree = await ChunkedBtree.load(
+            summary.btree,
+            this.createHandler(),
+            isSerializedHandle,
         );
     }
 
@@ -502,15 +486,8 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
             if (op.refSequenceNumber > this.refSequenceNumberOfLastFlush) {
                 this.refSequenceNumberOfLastFlush = op.refSequenceNumber;
                 this.sequencedState.flush(op.refSequenceNumber);
-                const { root, gcWhiteList } = op.persistedState;
                 // TODO: this could retain downloaded chunks that are the same
-                this.btree = ChunkedBtree.loadSync(
-                    root,
-                    this.createHandle.bind(this),
-                    this.resolveHandle.bind(this),
-                    isSerializedHandle,
-                );
-                this.gcWhiteList = gcWhiteList;
+                this.btree = this.btree.update(op.update);
                 this.emit(SharedPartialMapEvents.Flush, this.leaderTracker.isLeader());
             }
         } else {
@@ -532,11 +509,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
                     }
                     break;
                 case OpType.Clear: {
-                    this.initializePersistedState(new ChunkedBtree(
-                        btreeOrder,
-                        this.createHandle.bind(this),
-                        this.resolveHandle.bind(this)),
-                    );
+                    this.btree = this.btree.clear();
                     this.sequencedState.clear();
                     if (local) {
                         this.pendingState.ackClear();

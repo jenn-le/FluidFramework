@@ -4,25 +4,58 @@
  */
 
 import { fail } from "assert";
+import BTree from "sorted-btree";
 import { assert } from "@fluidframework/common-utils";
 import { IChunkedBtree } from "./interfaces";
-import { IBtreeLeafNode, ISerializedBtree, IBtreeInteriorNode } from "./persistedTypes";
+import { IBtreeLeafNode, ISerializedBtree, IBtreeInteriorNode, IBtreeUpdate } from "./persistedTypes";
 
+/**
+ * Handles handles
+ */
+ export interface Handler<THandle> {
+    createHandle: (content: IBtreeLeafNode | IBtreeInteriorNode<THandle>) => Promise<THandle>;
+    resolveHandle: (handle: THandle) => Promise<IBtreeLeafNode | IBtreeInteriorNode<THandle>>;
+    compareHandles: (a: THandle, b: THandle) => number;
+}
+
+/**
+ * TODO: docs
+ */
 export class ChunkedBtree<T, THandle> implements IChunkedBtree<T, THandle> {
     private readonly root: IBTreeNode<T, THandle>;
+    private readonly handles: BTree<THandle, THandle>;
 
-	public constructor(
-        public readonly order: number,
-        private readonly createHandle: (content: IBtreeLeafNode | IBtreeInteriorNode<THandle>) => Promise<THandle>,
-        private readonly resolveHandle: (handle: THandle) => Promise<IBtreeLeafNode | IBtreeInteriorNode<THandle>>,
+    public static create<T, THandle>(
+        order: number,
+        handler: Handler<THandle>,
         root?: IBTreeNode<T, THandle>,
+        handles?: readonly THandle[],
+    ) {
+        return new ChunkedBtree<T, THandle>(order, handler, root, handles);
+    }
+
+	private constructor(
+        public readonly order: number,
+        private readonly handler: Handler<THandle>,
+        root?: IBTreeNode<T, THandle>,
+        handles?: readonly THandle[] | BTree<THandle, THandle>,
     ) {
         assert(order >= 2, "Order out of bounds");
-        this.root = root ?? new LeafyBTreeNode([], [], order, createHandle);
+        this.root = root ?? new LeafyBTreeNode([], [], order, handler.createHandle);
+        this.handles = new BTree<THandle, THandle>(undefined, handler.compareHandles);
+        if (handles !== undefined) {
+            if (Array.isArray(handles)) {
+                for (const handle of handles) {
+                    this.handles.set(handle, handle);
+                }
+            } else {
+                this.handles = handles as BTree<THandle, THandle>;
+            }
+        }
     }
 
     private cloneWithNewRoot(newRoot: IBTreeNode<T, THandle>): ChunkedBtree<T, THandle> {
-        return new ChunkedBtree(this.order, this.createHandle, this.resolveHandle, newRoot);
+        return new ChunkedBtree(this.order, this.handler, newRoot);
     }
 
 	public async get(key: string): Promise<T | undefined> {
@@ -33,8 +66,8 @@ export class ChunkedBtree<T, THandle> implements IChunkedBtree<T, THandle> {
         return this.root.has(key);
     }
 
-    public async set(key: string, value: T): Promise<ChunkedBtree<T, THandle>> {
-        const result = await this.root.set(key, value);
+    public async set(key: string, value: T, deletedHandles: THandle[]): Promise<ChunkedBtree<T, THandle>> {
+        const result = await this.root.set(key, value, deletedHandles);
         let newRoot: IBTreeNode<T, THandle>;
         if (Array.isArray(result)) {
             const [nodeA, k, nodeB] = result;
@@ -42,8 +75,8 @@ export class ChunkedBtree<T, THandle> implements IChunkedBtree<T, THandle> {
                 [k],
                 [nodeA, nodeB],
                 this.order,
-                this.createHandle,
-                this.resolveHandle,
+                this.handler.createHandle,
+                this.handler.resolveHandle,
             );
         } else {
             newRoot = result;
@@ -51,12 +84,13 @@ export class ChunkedBtree<T, THandle> implements IChunkedBtree<T, THandle> {
         return this.cloneWithNewRoot(newRoot);
     }
 
-    public async delete(key: string): Promise<ChunkedBtree<T, THandle>> {
-        const newRoot = await this.root.delete(key);
+    public async delete(key: string, deletedHandles: THandle[]): Promise<ChunkedBtree<T, THandle>> {
+        const newRoot = await this.root.delete(key, deletedHandles);
         return this.cloneWithNewRoot(newRoot);
     }
 
-    public flushSync(updates: Iterable<[string, T]>, deletes: Iterable<string>): ISerializedBtree<IBtreeLeafNode> {
+    public flushSync(
+        updates: Iterable<[string, T]>, deletes: Iterable<string>): ISerializedBtree<IBtreeLeafNode, THandle> {
         const map = new Map(updates);
         for (const d of deletes) {
             map.delete(d);
@@ -68,25 +102,59 @@ export class ChunkedBtree<T, THandle> implements IChunkedBtree<T, THandle> {
                 keys: [...map.keys()],
                 values: [...map.values()],
             },
+            handles: [],
         };
     }
 
-	public async flush(updates: Iterable<[string, T]>, deletes: Iterable<string>): Promise<ISerializedBtree<THandle>> {
+	public async flush(updates: Iterable<[string, T]>, deletes: Iterable<string>):
+        Promise<{
+            readonly newRoot: THandle;
+            readonly newHandles: THandle[];
+            readonly deletedHandles: THandle[];
+        }> {
+        const deletedHandles: THandle[] = [];
         // eslint-disable-next-line @typescript-eslint/no-this-alias
         let btree: ChunkedBtree<T, THandle> = this;
 		for (const [key, value] of updates) {
-            btree = await this.set(key, value);
+            btree = await this.set(key, value, deletedHandles);
         }
 
+        // TODO: this should handle values with handles
         for (const key of deletes) {
-            btree = await this.delete(key);
+            btree = await this.delete(key, deletedHandles);
         }
 
+        const newHandles: THandle[] = [];
+        const newRoot = await btree.root.upload(newHandles);
         return {
-            order: btree.order,
-            root: await btree.root.upload(),
+            newRoot,
+            newHandles,
+            deletedHandles,
         };
 	}
+
+    public clear(): IChunkedBtree<T, THandle> {
+        return new ChunkedBtree(this.order, this.handler);
+    }
+
+    public update(update: IBtreeUpdate<THandle>): IChunkedBtree<T, THandle> {
+        const { newRoot, newHandles, deletedHandles } = update;
+        const handles = this.handles.clone();
+        for (const handle of newHandles) {
+            handles.set(handle, handle);
+        }
+        handles.deleteKeys(deletedHandles);
+        return new ChunkedBtree(
+            this.order,
+            this.handler,
+            new LazyBTreeNode(newRoot, this.order, this.handler.createHandle, this.handler.resolveHandle),
+            handles,
+        );
+    }
+
+    public getAllHandles(): THandle[] {
+        return this.handles.keysArray();
+    }
 
     public evict(evictionCountHint: number): void {
         this.root.evict({ remaining: evictionCountHint });
@@ -97,23 +165,22 @@ export class ChunkedBtree<T, THandle> implements IChunkedBtree<T, THandle> {
     }
 
     public static async load<T, THandle>(
-        { order, root }: ISerializedBtree<THandle | IBtreeLeafNode>,
-        createHandle: (content: IBtreeLeafNode | IBtreeInteriorNode<THandle>) => Promise<THandle>,
-        resolveHandle: (handle: THandle) => Promise<IBtreeLeafNode | IBtreeInteriorNode<THandle>>,
+        { order, root, handles }: ISerializedBtree<IBtreeLeafNode | THandle, THandle>,
+        handler: Handler<THandle>,
         isHandle: (handleOrNode: THandle | IBtreeLeafNode) => handleOrNode is THandle,
     ): Promise<ChunkedBtree<T, THandle>> {
         if (isHandle(root)) {
             return new ChunkedBtree(
                 order,
-                createHandle,
-                resolveHandle,
-                new LazyBTreeNode(root, order, createHandle, resolveHandle),
+                handler,
+                new LazyBTreeNode(root, order, handler.createHandle, handler.resolveHandle),
+                handles,
             );
         } else {
-            const btree = new ChunkedBtree<T, THandle>(order, createHandle, resolveHandle);
+            const btree = new ChunkedBtree<T, THandle>(order, handler);
             assert(root.keys.length === root.values.length, "Malformed drone; should be same number of keys as values");
             for (const [i, key] of root.keys.entries()) {
-                await btree.set(key, root.values[i]);
+                await btree.set(key, root.values[i], []);
             }
 
             return btree;
@@ -121,17 +188,15 @@ export class ChunkedBtree<T, THandle> implements IChunkedBtree<T, THandle> {
     }
 
     public static loadSync<T, THandle>(
-        { order, root }: ISerializedBtree<THandle | IBtreeLeafNode>,
-        createHandle: (content: IBtreeLeafNode | IBtreeInteriorNode<THandle>) => Promise<THandle>,
-        resolveHandle: (handle: THandle) => Promise<IBtreeLeafNode | IBtreeInteriorNode<THandle>>,
+        { order, root }: ISerializedBtree<IBtreeLeafNode, THandle>,
+        handler: Handler<THandle>,
         isHandle: (handleOrNode: THandle | IBtreeLeafNode) => handleOrNode is THandle,
     ): ChunkedBtree<T, THandle> {
         if (isHandle(root)) {
             return new ChunkedBtree(
                 order,
-                createHandle,
-                resolveHandle,
-                new LazyBTreeNode(root, order, createHandle, resolveHandle),
+                handler,
+                new LazyBTreeNode(root, order, handler.createHandle, handler.resolveHandle),
             );
         } else {
             fail("Cannot synchronously chunk btree.");
@@ -145,9 +210,10 @@ interface IBTreeNode<T, THandle> {
     set(
         key: string,
         value: T,
+        deletedHandles: THandle[]
     ): Promise<IBTreeNode<T, THandle> | [IBTreeNode<T, THandle>, string, IBTreeNode<T, THandle>]>;
-    delete(key: string): Promise<IBTreeNode<T, THandle>>;
-    upload(): Promise<THandle>;
+    delete(key: string, deletedHandles: THandle[]): Promise<IBTreeNode<T, THandle>>;
+    upload(newHandles: THandle[]): Promise<THandle>;
     evict(evicted: { remaining: number; }): number;
     workingSetSize(): number;
 }
@@ -185,11 +251,11 @@ class BTreeNode<T, THandle> {
     }
 
     public async set(
-        key: string, value: T,
+        key: string, value: T, deletedHandles: THandle[],
     ): Promise<BTreeNode<T, THandle> | [BTreeNode<T, THandle>, string, BTreeNode<T, THandle>]> {
         for (let i = 0; i < this.children.length; i++) {
             if (i === this.keys.length || key < this.keys[i]) {
-                const childResult = await this.children[i].set(key, value);
+                const childResult = await this.children[i].set(key, value, deletedHandles);
                 if (Array.isArray(childResult)) {
                     // The child split in half
                     const [childA, k, childB] = childResult;
@@ -223,11 +289,11 @@ class BTreeNode<T, THandle> {
         throw new Error("Unreachable code");
     }
 
-    public async delete(key: string): Promise<BTreeNode<T, THandle>> {
+    public async delete(key: string, deletedHandles: THandle[]): Promise<BTreeNode<T, THandle>> {
         for (let i = 0; i < this.children.length; i++) {
             if (i === this.keys.length || key < this.keys[i]) {
                 const children = [...this.children];
-                children[i] = await this.children[i].delete(key);
+                children[i] = await this.children[i].delete(key, deletedHandles);
                 return new BTreeNode(this.keys, children, this.order, this.createHandle, this.resolveHandle);
             }
         }
@@ -235,13 +301,15 @@ class BTreeNode<T, THandle> {
         throw new Error("Unreachable code");
     }
 
-    public async upload(): Promise<THandle> {
+    public async upload(newHandles: THandle[]): Promise<THandle> {
         const worker: IBtreeInteriorNode<THandle> = {
             keys: this.keys,
-            children: await Promise.all(this.children.map(async (c) => c.upload())),
+            children: await Promise.all(this.children.map(async (c) => c.upload(newHandles))),
         };
 
-        return this.createHandle(worker);
+        const thisHandle = await this.createHandle(worker);
+        newHandles.push(thisHandle);
+        return thisHandle;
     }
 
     public evict(evicted: { remaining: number; }): number {
@@ -297,6 +365,7 @@ class LeafyBTreeNode<T, THandle> implements IBTreeNode<T, THandle> {
     public async set(
         key: string,
         value: T,
+        _: THandle[],
     ): Promise<LeafyBTreeNode<T, THandle> | [LeafyBTreeNode<T, THandle>, string, LeafyBTreeNode<T, THandle>]> {
         for (let i = 0; i <= this.keys.length; i++) {
             if (this.keys[i] === key) {
@@ -324,7 +393,7 @@ class LeafyBTreeNode<T, THandle> implements IBTreeNode<T, THandle> {
         throw new Error("Unreachable code");
     }
 
-    public async delete(key: string): Promise<LeafyBTreeNode<T, THandle>> {
+    public async delete(key: string, _: THandle[]): Promise<LeafyBTreeNode<T, THandle>> {
         for (let i = 0; i <= this.keys.length; i++) {
             if (this.keys[i] === key) {
                 const keys = remove(this.keys, i);
@@ -336,13 +405,15 @@ class LeafyBTreeNode<T, THandle> implements IBTreeNode<T, THandle> {
         return this;
     }
 
-    public async upload(): Promise<THandle> {
+    public async upload(newHandles: THandle[]): Promise<THandle> {
         const drone: IBtreeLeafNode = {
             keys: this.keys,
             values: this.values,
         };
 
-        return this.createHandle(drone);
+        const thisHandle = await this.createHandle(drone);
+        newHandles.push(thisHandle);
+        return thisHandle;
     }
 
     public evict(evicted: { remaining: number; }): number {
@@ -397,15 +468,18 @@ class LazyBTreeNode<T, THandle> implements IBTreeNode<T, THandle> {
     public async set(
         key: string,
         value: T,
+        deletedHandles: THandle[],
     ): Promise<IBTreeNode<T, THandle> | [IBTreeNode<T, THandle>, string, IBTreeNode<T, THandle>]> {
-        return (await this.load()).set(key, value);
+        deletedHandles.push(this.handle);
+        return (await this.load()).set(key, value, deletedHandles);
     }
 
-    public async delete(key: string): Promise<IBTreeNode<T, THandle>> {
-        return (await this.load()).delete(key);
+    public async delete(key: string, deletedHandles: THandle[]): Promise<IBTreeNode<T, THandle>> {
+        deletedHandles.push(this.handle);
+        return (await this.load()).delete(key, deletedHandles);
     }
 
-    public async upload(): Promise<THandle> {
+    public async upload(newHandles: THandle[]): Promise<THandle> {
         return this.handle;
     }
 

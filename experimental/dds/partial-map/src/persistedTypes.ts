@@ -5,14 +5,20 @@
 
 import { ISerializedHandle } from "@fluidframework/shared-object-base";
 
-export interface ISharedPartialMapSummary<THandle> {
-    readonly root: ISerializedBtree<THandle>;
-    readonly gcWhiteList: GCWhiteList;
+export interface ISharedPartialMapSummary<TRoot, THandle> {
+    readonly btree: ISerializedBtree<TRoot, THandle>;
 }
 
-export interface ISerializedBtree<THandle> {
+export interface IBtreeUpdate<THandle> {
+    readonly newRoot: THandle;
+    readonly newHandles: THandle[];
+    readonly deletedHandles: THandle[];
+}
+
+export interface ISerializedBtree<TRoot, THandle> {
     readonly order: number;
-    readonly root: THandle;
+    readonly root: TRoot;
+    readonly handles: THandle[];
 }
 
 export interface IBtreeInteriorNode<THandle> {
@@ -24,8 +30,6 @@ export interface IBtreeLeafNode {
     readonly keys: readonly string[];
     readonly values: readonly any[];
 }
-
-export type GCWhiteList = string[];
 
 export enum OpType {
     Set,
@@ -53,6 +57,6 @@ export interface ClearOp {
 
 export interface FlushOp {
     type: OpType.Flush;
-    persistedState: ISharedPartialMapSummary<ISerializedHandle>;
+    update: IBtreeUpdate<ISerializedHandle>;
     refSequenceNumber: number;
 }

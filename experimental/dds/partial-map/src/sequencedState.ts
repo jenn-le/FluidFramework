@@ -100,7 +100,7 @@ export class SequencedState<T> {
         }
     }
 
-    private evict(): void {
+    public evict(): void {
         if (this.allEntries.size > this.cacheSizeHint) {
             const evictableCount = this.allEntries.size - this.unflushedChangeCount;
             let toEvict = this.cacheSizeHint / 2;
