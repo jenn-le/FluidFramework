@@ -133,11 +133,11 @@ export class ChunkedBtree<T, THandle> implements IChunkedBtree<T, THandle> {
         };
 	}
 
-    public clear(): IChunkedBtree<T, THandle> {
+    public clear(): ChunkedBtree<T, THandle> {
         return new ChunkedBtree(this.order, this.handler);
     }
 
-    public update(update: IBtreeUpdate<THandle>): IChunkedBtree<T, THandle> {
+    public update(update: IBtreeUpdate<THandle>): ChunkedBtree<T, THandle> {
         const { newRoot, newHandles, deletedHandles } = update;
         const handles = this.handles.clone();
         for (const handle of newHandles) {
@@ -177,10 +177,10 @@ export class ChunkedBtree<T, THandle> implements IChunkedBtree<T, THandle> {
                 handles,
             );
         } else {
-            const btree = new ChunkedBtree<T, THandle>(order, handler);
+            let btree = new ChunkedBtree<T, THandle>(order, handler);
             assert(root.keys.length === root.values.length, "Malformed drone; should be same number of keys as values");
             for (const [i, key] of root.keys.entries()) {
-                await btree.set(key, root.values[i], []);
+                btree = await btree.set(key, root.values[i], []);
             }
 
             return btree;

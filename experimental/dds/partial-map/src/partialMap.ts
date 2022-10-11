@@ -438,7 +438,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
 
     public getGCData(fullGC?: boolean | undefined): IGarbageCollectionData {
         // TODO: don't use blob manager, then this method becomes a noop
-        return { gcNodes: { "/": [] } };
+        return { gcNodes: { "/": this.btree.getAllHandles().map((handle) => handle.url) } };
     }
 
     /**
