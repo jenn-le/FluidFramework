@@ -100,11 +100,12 @@ export class SequencedState<T> {
         }
     }
 
-    public evict(): void {
-        if (this.allEntries.size > this.cacheSizeHint) {
-            const evictableCount = this.allEntries.size - this.unflushedChangeCount;
-            let toEvict = this.cacheSizeHint / 2;
+    public evict(workingSetSizeOverride?: number): void {
+        const workingSetSize = Math.max(this.allEntries.size, workingSetSizeOverride ?? 0);
+        if (workingSetSize > this.cacheSizeHint) {
+            const evictableCount = workingSetSize - this.unflushedChangeCount;
             if (evictableCount > this.cacheSizeHint / 2) {
+                let toEvict = this.cacheSizeHint / 2;
                 this.onEvict(toEvict);
                 for (const key of this.allEntries.keys()) {
                     if (!this.modified.has(key)) {

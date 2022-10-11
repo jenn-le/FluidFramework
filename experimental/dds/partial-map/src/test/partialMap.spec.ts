@@ -198,7 +198,30 @@ describe("PartialMap", () => {
             for (let i = 0; i < cacheSizeHint; i++, key++) {
                 map.set(key.toString(), key);
             }
-            assert.equal(map.workingSetSize(), cacheSizeHint);
+            assert.equal(map.workingSetSize(), cacheSizeHint + flushThreshold);
+        });
+
+        it("Can flush changes from the btree", async () => {
+            const flushThreshold = 5;
+            const cacheSizeHint = flushThreshold * 2;
+            const { map, testObjectProvider } = await setUpLocalServerPartialMap();
+            setCacheAndFlush(map, cacheSizeHint, flushThreshold);
+            const [_, keys] = setupEvents(map);
+
+            let key = 0;
+            for (let i = 0; i < cacheSizeHint * 2; i++, key++) {
+                map.set(key.toString(), key);
+            }
+
+            await testObjectProvider.ensureSynchronized();
+            assert(map.workingSetSize() <= cacheSizeHint);
+
+            const readKeys: any[] = [];
+            for (const readKey of keys) {
+                readKeys.push(await map.get(readKey));
+            }
+            assert.deepEqual(readKeys, keys);
+            assert(map.workingSetSize() <= cacheSizeHint);
         });
     });
 
