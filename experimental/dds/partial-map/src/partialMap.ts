@@ -24,7 +24,7 @@ import { readAndParse } from "@fluidframework/driver-utils";
 import { bufferToString, stringToBuffer } from "@fluidframework/common-utils";
 import { IFluidHandle } from "@fluidframework/core-interfaces";
 import { pkgVersion } from "./packageVersion";
-import { IChunkedBtree, ISharedPartialMapEvents, SharedPartialMapEvents } from "./interfaces";
+import { IBTreeState, IChunkedBtree, ISharedPartialMapEvents, SharedPartialMapEvents } from "./interfaces";
 import { SequencedState } from "./sequencedState";
 import {
     ClearOp,
@@ -406,7 +406,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         return createSingleBlobSummary(snapshotFileName, this.serializer.stringify(summary, this.handle));
     }
 
-    private createHandler(): Handler<any, IFluidHandle<ArrayBufferLike>> {
+    private createHandler(): Handler<any, IFluidHandle<ArrayBufferLike>, IFluidHandle> {
         return {
             createHandle: async (content: IBtreeInteriorNode<IFluidHandle<ArrayBufferLike>> | IBtreeLeafNode) => {
                 const serializedContents = this.serializer.stringify(content, this.handle);
@@ -419,14 +419,14 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
                     = this.serializer.parse(serializedContents);
                 return node;
             },
-            compareHandles: ({ url: a }, { url: b }) => a < b ? -1 : a === b ? 0 : 1,
-            discoverHandles
+            compareHandles: ({ absolutePath: a }, { absolutePath: b }) => a < b ? -1 : a === b ? 0 : 1,
+            discoverHandles,
         };
     }
 
     public getGCData(fullGC?: boolean | undefined): IGarbageCollectionData {
         // TODO: don't use blob manager, then this method becomes a noop
-        return { gcNodes: { "/": this.btree.getAllHandles().map((handle) => handle.url) } };
+        return { gcNodes: { "/": this.btree.getAllHandles().map((handle) => handle.absolutePath) } };
     }
 
     /**
@@ -434,10 +434,9 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
      * @internal
      */
     protected async loadCore(storage: IChannelStorageService) {
-        const json = await readAndParse<object>(storage, snapshotFileName);
-        const summary = json as ISharedPartialMapSummary<ISerializedHandle | IBtreeLeafNode>;
+        const json = await readAndParse<IBTreeState<IFluidHandle<ArrayBufferLike>>>(storage, snapshotFileName);
         this.btree = await ChunkedBtree.load(
-            summary.btree,
+            json,
             this.createHandler(),
             (obj: unknown): obj is IFluidHandle<ArrayBufferLike> => (obj as IFluidHandle).IFluidHandle !== undefined,
         );
