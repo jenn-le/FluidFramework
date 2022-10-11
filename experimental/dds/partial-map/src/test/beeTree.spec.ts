@@ -24,50 +24,51 @@ class MockHandleMap {
     }
 }
 
-function mockBTree<T>(order = 3): ChunkedBtree<T, number> {
+function mockBTree<T>(order = 3): ChunkedBtree<T, number, number> {
     const mockHandleMap = new MockHandleMap();
-    return ChunkedBtree.create<T, number>(
+    return ChunkedBtree.create<T, number, number>(
         order,
         {
             createHandle: async (bee) => mockHandleMap.createHandle(bee),
             resolveHandle: async (handle) => mockHandleMap.resolveHandle(handle),
             compareHandles: (a, b) => a - b,
-        }
+            discoverHandles: () => [],
+        },
     );
 }
 
 describe("BTree", () => {
     it("can set and read a single value", async () => {
         let btree = mockBTree<number>();
-        btree = await btree.set("key", 42, []);
+        btree = await btree.set("key", 42, [], []);
         assert.equal(await btree.get("key"), 42);
     });
 
     it("can has a single value", async () => {
         let btree = mockBTree<string>();
         assert.equal(await btree.has("key"), false);
-        btree = await btree.set("key", "cheezburger", []);
+        btree = await btree.set("key", "cheezburger", [], []);
         assert.equal(await btree.has("key"), true);
     });
 
     it("can delete a single value", async () => {
         let btree = mockBTree<number>();
-        btree = await btree.set("key", 42, []);
+        btree = await btree.set("key", 42, [], []);
         btree = await btree.delete("key", []);
         assert.equal(await btree.has("key"), false);
     });
 
     it("can overwrite a single value", async () => {
         let btree = mockBTree<number>();
-        btree = await btree.set("key", 42, []);
-        btree = await btree.set("key", 43, []);
+        btree = await btree.set("key", 42, [], []);
+        btree = await btree.set("key", 43, [], []);
         assert.equal(await btree.get("key"), 43);
     });
 
     it("can set many values", async () => {
         let btree = mockBTree<string>();
         for (const key of manyKeys) {
-            btree = await btree.set(key, key, []);
+            btree = await btree.set(key, key, [], []);
         }
 
         for (const key of manyKeys) {
@@ -78,7 +79,7 @@ describe("BTree", () => {
     it("can delete many values", async () => {
         let btree = mockBTree<string>();
         for (const key of manyKeys) {
-            btree = await btree.set(key, key, []);
+            btree = await btree.set(key, key, [], []);
         }
 
         for (const key of manyKeys) {
@@ -88,7 +89,7 @@ describe("BTree", () => {
     });
 
     async function flushAndLoad<T>(
-        btree: ChunkedBtree<T, number>): Promise<ChunkedBtree<T, number>> {
+        btree: ChunkedBtree<T, number, number>): Promise<ChunkedBtree<T, number, number>> {
         const update = await btree.flush([], []);
         return btree.update(update);
     }
@@ -98,7 +99,7 @@ describe("BTree", () => {
         let btree = mockBTree<string>();
 
         for (const key of manyKeys) {
-            btree = await btree.set(key, key, []);
+            btree = await btree.set(key, key, [], []);
         }
 
         let loadedBTree = await flushAndLoad(btree);
@@ -125,7 +126,7 @@ describe("BTree", () => {
         for (let i = 0; i < 1000; i++) {
             const key = i.toString();
             keys.push(key);
-            btree = await btree.set(key, key, []);
+            btree = await btree.set(key, key, [], []);
         }
 
         const readAllKeys = async () => {

@@ -17,14 +17,13 @@ import { IGarbageCollectionData, ISummaryTreeWithStats, ITelemetryContext } from
 import {
     createSingleBlobSummary,
     IFluidSerializer,
-    ISerializedHandle,
     SharedObject,
 } from "@fluidframework/shared-object-base";
 import { readAndParse } from "@fluidframework/driver-utils";
 import { bufferToString, stringToBuffer } from "@fluidframework/common-utils";
 import { IFluidHandle } from "@fluidframework/core-interfaces";
 import { pkgVersion } from "./packageVersion";
-import { IBTreeState, IChunkedBtree, ISharedPartialMapEvents, SharedPartialMapEvents } from "./interfaces";
+import { IBtreeState, IChunkedBtree, ISharedPartialMapEvents, SharedPartialMapEvents } from "./interfaces";
 import { SequencedState } from "./sequencedState";
 import {
     ClearOp,
@@ -137,7 +136,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
 
     private readonly leaderTracker: LeaderTracker;
 
-    private btree: IChunkedBtree<any, IFluidHandle<ArrayBufferLike>>
+    private btree: IChunkedBtree<any, IFluidHandle<ArrayBufferLike>, IFluidHandle>
         = ChunkedBtree.create(
             btreeOrder,
             this.createHandler(),
@@ -344,8 +343,8 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         const [updates, deletes] = this.sequencedState.getFlushableChanges();
         const refSequenceNumber = this.runtime.deltaManager.lastSequenceNumber;
         let newRoot: IFluidHandle<ArrayBufferLike>;
-        let newHandles: IFluidHandle<ArrayBufferLike>[];
-        let deletedHandles: IFluidHandle<ArrayBufferLike>[];
+        let newHandles: (IFluidHandle<ArrayBufferLike> | IFluidHandle)[];
+        let deletedHandles: (IFluidHandle<ArrayBufferLike> | IFluidHandle)[];
         try {
             ({ newRoot, newHandles, deletedHandles } = await this.btree.flush(updates, deletes));
         } catch (error) {
@@ -434,7 +433,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
      * @internal
      */
     protected async loadCore(storage: IChannelStorageService) {
-        const json = await readAndParse<IBTreeState<IFluidHandle<ArrayBufferLike>>>(storage, snapshotFileName);
+        const json = await readAndParse<IBtreeState<IFluidHandle<ArrayBufferLike>>>(storage, snapshotFileName);
         this.btree = await ChunkedBtree.load(
             json,
             this.createHandler(),
@@ -518,11 +517,13 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
 }
 
 function *discoverHandles(value: any): Iterable<IFluidHandle> {
-    for (const v of Object.values(value)) {
-        if (isFluidHandle(v)) {
-            yield v;
-        } else {
-            yield* discoverHandles(v);
+    for (const [_, v] of Object.entries(value)) {
+        if (!!v && typeof v === "object") {
+            if (isFluidHandle(v)) {
+                yield v;
+            } else {
+                yield* discoverHandles(v);
+            }
         }
     }
 }

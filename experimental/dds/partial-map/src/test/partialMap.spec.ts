@@ -303,12 +303,14 @@ describe("PartialMap", () => {
                         localSubMap.absolutePath, subMap.handle.absolutePath, "could not get the handle's path");
 
                     // Verify the remote SharedPartialMap
-                    const remoteSubMap = await map2.get<IFluidHandle>("test");
-                    assert(remoteSubMap);
+                    const remoteSubMapHandle = await map2.get<IFluidHandle>("test");
+                    assert(remoteSubMapHandle);
                     assert.equal(
-                        remoteSubMap.absolutePath,
+                        remoteSubMapHandle.absolutePath,
                         subMap.handle.absolutePath,
                         "could not get the handle's path in remote map");
+                    const retrieved = await remoteSubMapHandle.get();
+                    assert(retrieved !== undefined);
                 });
 
                 it("Should be able to set and retrieve a plain object with nested handles", async () => {

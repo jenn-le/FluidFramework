@@ -4,7 +4,7 @@
  */
 
 import { ISharedObjectEvents } from "@fluidframework/shared-object-base";
-import { IBtreeLeafNode, IBtreeUpdate } from "./persistedTypes";
+import { IBtreeLeafNode } from "./persistedTypes";
 
 /**
  * Type of "valueChanged" event parameter.
@@ -78,32 +78,32 @@ export enum SharedPartialMapEvents {
 /**
  * TODO docs
  */
-export interface IChunkedBtree<T, THandle> {
+export interface IChunkedBtree<T, THandle, TValueHandle> {
     order: number;
 
     get(key: string): Promise<T | undefined>;
 
     has(key: string): Promise<boolean>;
 
-    clear(): IChunkedBtree<T, THandle>;
+    clear(): IChunkedBtree<T, THandle, TValueHandle>;
 
     flush(
         updates: Map<string, T>,
         deletes: Set<string>,
     ): Promise<{
         readonly newRoot: THandle;
-        readonly newHandles: THandle[];
-        readonly deletedHandles: THandle[];
+        readonly newHandles: (THandle | TValueHandle)[];
+        readonly deletedHandles: (THandle | TValueHandle)[];
     }>;
 
     summarizeSync(
         updates: Map<string, T>,
         deletes: Set<string>,
-    ): IBTreeState<THandle, IBtreeLeafNode>;
+    ): IBtreeState<THandle | TValueHandle, IBtreeLeafNode>;
 
-    update(update: IBtreeUpdate<THandle>): IChunkedBtree<T, THandle>;
+    update(update: IBtreeUpdate<THandle, TValueHandle>): IChunkedBtree<T, THandle, TValueHandle>;
 
-    getAllHandles(): THandle[];
+    getAllHandles(): (THandle | TValueHandle)[];
 
     evict(evictionCountHint: number);
 
@@ -111,8 +111,15 @@ export interface IChunkedBtree<T, THandle> {
 }
 
 /** The state used to to save/load a ChunkedBTree */
-export interface IBTreeState<THandle, TRoot extends IBtreeLeafNode | THandle = IBtreeLeafNode | THandle> {
+export interface IBtreeState<THandle, TRoot extends IBtreeLeafNode | THandle = IBtreeLeafNode | THandle> {
     readonly order: number;
     readonly root: TRoot;
     readonly handles: THandle[];
+}
+
+/** The state used to to update a ChunkedBTree */
+export interface IBtreeUpdate<THandle, TValueHandle> {
+    readonly newRoot: THandle;
+    readonly newHandles: (THandle | TValueHandle)[];
+    readonly deletedHandles: (THandle | TValueHandle)[];
 }

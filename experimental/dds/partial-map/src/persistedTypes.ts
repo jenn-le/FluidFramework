@@ -5,10 +5,10 @@
 
 import { ISerializedHandle } from "@fluidframework/shared-object-base";
 
-export interface IBtreeUpdate<THandle> {
-    readonly newRoot: THandle;
-    readonly newHandles: THandle[];
-    readonly deletedHandles: THandle[];
+export interface ISerializedBtreeUpdate {
+    readonly newRoot: ISerializedHandle;
+    readonly newHandles: ISerializedHandle[];
+    readonly deletedHandles: ISerializedHandle[];
 }
 
 export interface ISerializedBtree<TRoot> {
@@ -53,6 +53,6 @@ export interface ClearOp {
 
 export interface FlushOp {
     type: OpType.Flush;
-    update: IBtreeUpdate<ISerializedHandle>;
+    update: ISerializedBtreeUpdate;
     refSequenceNumber: number;
 }
