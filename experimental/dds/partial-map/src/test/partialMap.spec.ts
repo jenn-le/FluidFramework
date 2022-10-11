@@ -202,7 +202,7 @@ describe("PartialMap", () => {
         });
 
         it("Can flush changes from the btree", async () => {
-            const flushThreshold = 5;
+            const flushThreshold = 50;
             const cacheSizeHint = flushThreshold * 2;
             const { map, testObjectProvider } = await setUpLocalServerPartialMap();
             setCacheAndFlush(map, cacheSizeHint, flushThreshold);
