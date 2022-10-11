@@ -34,9 +34,9 @@ export class SequencedState<T> {
         this.cacheSizeHint = cacheSizeHint;
     }
 
-    public cache(key: string, value: T): void {
+    public cache(key: string, value: T, workingSetSizeOverride: number): void {
         this.allEntries.set(key, value);
-        this.evict();
+        this.evict(workingSetSizeOverride);
     }
 
     public get(key: string): { value: T | undefined; keyIsModified: boolean; isDeleted: boolean; } {

@@ -206,21 +206,24 @@ describe("PartialMap", () => {
             const cacheSizeHint = flushThreshold * 2;
             const { map, testObjectProvider } = await setUpLocalServerPartialMap();
             setCacheAndFlush(map, cacheSizeHint, flushThreshold);
-            const [_, keys] = setupEvents(map);
 
             let key = 0;
+            const keys: string[] = [];
+            const values: number[] = [];
             for (let i = 0; i < cacheSizeHint * 2; i++, key++) {
-                map.set(key.toString(), key);
+                keys.push(key.toString());
+                values.push(key);
+                map.set(keys[keys.length - 1], values[values.length - 1]);
             }
 
             await testObjectProvider.ensureSynchronized();
             assert(map.workingSetSize() <= cacheSizeHint);
 
-            const readKeys: any[] = [];
+            const readValues: any[] = [];
             for (const readKey of keys) {
-                readKeys.push(await map.get(readKey));
+                readValues.push(await map.get(readKey));
             }
-            assert.deepEqual(readKeys, keys);
+            assert.deepEqual(readValues, values);
             assert(map.workingSetSize() <= cacheSizeHint);
         });
     });

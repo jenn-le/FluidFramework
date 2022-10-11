@@ -125,12 +125,12 @@ export class ChunkedBtree<T, THandle, TValueHandle> implements IChunkedBtree<T, 
         // eslint-disable-next-line @typescript-eslint/no-this-alias
         let btree: ChunkedBtree<T, THandle, TValueHandle> = this;
 		for (const [key, value] of updates) {
-            btree = await this.set(key, value, newHandles, deletedHandles);
+            btree = await btree.set(key, value, newHandles, deletedHandles);
         }
 
         // TODO: this should handle values with handles
         for (const key of deletes) {
-            btree = await this.delete(key, deletedHandles);
+            btree = await btree.delete(key, deletedHandles);
         }
 
         const newRoot = await btree.root.upload(newHandles);

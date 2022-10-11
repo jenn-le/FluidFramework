@@ -203,7 +203,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         const stored = await this.btree.get(key);
 
         if (stored !== undefined) {
-            this.sequencedState.cache(key, stored);
+            this.sequencedState.cache(key, stored, this.workingSetSize());
         }
 
         return stored as T;
