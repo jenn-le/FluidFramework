@@ -4,7 +4,7 @@
  */
 
 import { ISharedObjectEvents } from "@fluidframework/shared-object-base";
-import { IBtreeLeafNode, IBtreeUpdate, ISerializedBtree } from "./persistedTypes";
+import { IBtreeLeafNode, IBtreeUpdate } from "./persistedTypes";
 
 /**
  * Type of "valueChanged" event parameter.
@@ -96,10 +96,10 @@ export interface IChunkedBtree<T, THandle> {
         readonly deletedHandles: THandle[];
     }>;
 
-    flushSync(
+    summarizeSync(
         updates: Map<string, T>,
         deletes: Set<string>,
-    ): ISerializedBtree<IBtreeLeafNode, THandle>;
+    ): IBTreeState<THandle, IBtreeLeafNode>;
 
     update(update: IBtreeUpdate<THandle>): IChunkedBtree<T, THandle>;
 
@@ -108,4 +108,11 @@ export interface IChunkedBtree<T, THandle> {
     evict(evictionCountHint: number);
 
     workingSetSize(): number;
+}
+
+/** The state used to to save/load a ChunkedBTree */
+export interface IBTreeState<THandle, TRoot extends IBtreeLeafNode | THandle = IBtreeLeafNode | THandle> {
+    readonly order: number;
+    readonly root: TRoot;
+    readonly handles: THandle[];
 }

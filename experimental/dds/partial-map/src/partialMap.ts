@@ -3,7 +3,6 @@
  * Licensed under the MIT License.
  */
 
-import { fail } from "assert";
 import { assert } from "console";
 import { ISequencedDocumentMessage } from "@fluidframework/protocol-definitions";
 import {
@@ -19,7 +18,6 @@ import {
     createSingleBlobSummary,
     IFluidSerializer,
     ISerializedHandle,
-    isSerializedHandle,
     SharedObject,
 } from "@fluidframework/shared-object-base";
 import { readAndParse } from "@fluidframework/driver-utils";
@@ -33,7 +31,6 @@ import {
     DeleteOp,
     FlushOp,
     IBtreeLeafNode,
-    ISharedPartialMapSummary,
     IBtreeInteriorNode,
     OpType,
     PartialMapOp,
@@ -140,7 +137,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
 
     private readonly leaderTracker: LeaderTracker;
 
-    private btree: IChunkedBtree<any, ISerializedHandle>
+    private btree: IChunkedBtree<any, IFluidHandle<ArrayBufferLike>>
         = ChunkedBtree.create(
             btreeOrder,
             this.createHandler(),
@@ -346,9 +343,9 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         assert(this.leaderTracker.isLeader(), "Non-leader should not evict cache.");
         const [updates, deletes] = this.sequencedState.getFlushableChanges();
         const refSequenceNumber = this.runtime.deltaManager.lastSequenceNumber;
-        let newRoot: ISerializedHandle;
-        let newHandles: ISerializedHandle[];
-        let deletedHandles: ISerializedHandle[];
+        let newRoot: IFluidHandle<ArrayBufferLike>;
+        let newHandles: IFluidHandle<ArrayBufferLike>[];
+        let deletedHandles: IFluidHandle<ArrayBufferLike>[];
         try {
             ({ newRoot, newHandles, deletedHandles } = await this.btree.flush(updates, deletes));
         } catch (error) {
@@ -359,11 +356,11 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
 
         const evictionOp: FlushOp = {
             type: OpType.Flush,
-            update: {
+            update: this.serializer.encode({
                 newRoot,
                 newHandles,
                 deletedHandles,
-            },
+            }, this.handle),
             refSequenceNumber,
         };
 
@@ -392,13 +389,9 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
     ): ISummaryTreeWithStats {
         assert(this.runtime.deltaManager.lastKnownSeqNumber === 0, "No ops should be processed before attachment.");
         const [updates, deletes] = this.sequencedState.getFlushableChanges();
-        const root = this.btree.flushSync(updates, deletes);
-
-        const summary: ISharedPartialMapSummary<IBtreeLeafNode, ISerializedHandle> = {
-            btree: root,
-        };
-
-        return createSingleBlobSummary(snapshotFileName, this.serializer.stringify(summary, this.handle));
+        const root = this.btree.summarizeSync(updates, deletes);
+        const serializedRoot = this.serializer.stringify(root, this.handle);
+        return createSingleBlobSummary(snapshotFileName, serializedRoot);
     }
 
     override async summarize(
@@ -409,30 +402,25 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         const [updates, deletes] = this.sequencedState.getFlushableChanges();
         const update = await this.btree.flush(updates, deletes);
         const newBtree = this.btree.update(update);
-        const summary: ISharedPartialMapSummary<ISerializedHandle, ISerializedHandle> = {
-            btree: { root: update.newRoot, order: this.btree.order, handles: newBtree.getAllHandles() },
-        };
+        const summary = { root: update.newRoot, order: this.btree.order, handles: newBtree.getAllHandles() };
         return createSingleBlobSummary(snapshotFileName, this.serializer.stringify(summary, this.handle));
     }
 
-    private createHandler(): Handler<ISerializedHandle> {
+    private createHandler(): Handler<any, IFluidHandle<ArrayBufferLike>> {
         return {
-            createHandle: async (content: IBtreeInteriorNode<ISerializedHandle> | IBtreeLeafNode) => {
+            createHandle: async (content: IBtreeInteriorNode<IFluidHandle<ArrayBufferLike>> | IBtreeLeafNode) => {
                 const serializedContents = this.serializer.stringify(content, this.handle);
                 const buffer = stringToBuffer(serializedContents, "utf-8");
-                const btreeNode = await this.runtime.uploadBlob(buffer);
-                const serialized: ISerializedHandle = this.serializer.encode(btreeNode, this.handle) ??
-                fail("Btree node could not be uploaded or serialized.");
-                return serialized;
+                return this.runtime.uploadBlob(buffer);
             },
-            resolveHandle: async (handle: ISerializedHandle | IBtreeLeafNode) => {
-                const btreeNode: IFluidHandle<ArrayBufferLike> = this.serializer.decode(handle);
-                const serializedContents = bufferToString(await btreeNode.get(), "utf-8");
-                const node: IBtreeInteriorNode<ISerializedHandle> | IBtreeLeafNode
+            resolveHandle: async (handle: IFluidHandle<ArrayBufferLike>) => {
+                const serializedContents = bufferToString(await handle.get(), "utf-8");
+                const node: IBtreeInteriorNode<IFluidHandle<ArrayBufferLike>> | IBtreeLeafNode
                     = this.serializer.parse(serializedContents);
                 return node;
             },
             compareHandles: ({ url: a }, { url: b }) => a < b ? -1 : a === b ? 0 : 1,
+            discoverHandles
         };
     }
 
@@ -447,11 +435,11 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
      */
     protected async loadCore(storage: IChannelStorageService) {
         const json = await readAndParse<object>(storage, snapshotFileName);
-        const summary = json as ISharedPartialMapSummary<ISerializedHandle | IBtreeLeafNode, ISerializedHandle>;
+        const summary = json as ISharedPartialMapSummary<ISerializedHandle | IBtreeLeafNode>;
         this.btree = await ChunkedBtree.load(
             summary.btree,
             this.createHandler(),
-            isSerializedHandle,
+            (obj: unknown): obj is IFluidHandle<ArrayBufferLike> => (obj as IFluidHandle).IFluidHandle !== undefined,
         );
     }
 
@@ -487,7 +475,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
                 this.refSequenceNumberOfLastFlush = op.refSequenceNumber;
                 this.sequencedState.flush(op.refSequenceNumber);
                 // TODO: this could retain downloaded chunks that are the same
-                this.btree = this.btree.update(op.update);
+                this.btree = this.btree.update(this.serializer.decode(op.update));
                 this.emit(SharedPartialMapEvents.Flush, this.leaderTracker.isLeader());
             }
         } else {
@@ -526,4 +514,18 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
             }
         }
     }
+}
+
+function *discoverHandles(value: any): Iterable<IFluidHandle> {
+    for (const v of Object.values(value)) {
+        if (isFluidHandle(v)) {
+            yield v;
+        } else {
+            yield* discoverHandles(v);
+        }
+    }
+}
+
+function isFluidHandle(obj: unknown): obj is IFluidHandle {
+    return (obj as IFluidHandle).IFluidHandle !== undefined;
 }

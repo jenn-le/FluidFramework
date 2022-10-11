@@ -6,16 +6,17 @@
 import { fail } from "assert";
 import BTree from "sorted-btree";
 import { assert } from "@fluidframework/common-utils";
-import { IChunkedBtree } from "./interfaces";
-import { IBtreeLeafNode, ISerializedBtree, IBtreeInteriorNode, IBtreeUpdate } from "./persistedTypes";
+import { IBtreeLeafNode, IBtreeInteriorNode, IBtreeUpdate } from "./persistedTypes";
+import { IBTreeState, IChunkedBtree } from "./interfaces";
 
 /**
  * Handles handles
  */
- export interface Handler<THandle> {
-    createHandle: (content: IBtreeLeafNode | IBtreeInteriorNode<THandle>) => Promise<THandle>;
-    resolveHandle: (handle: THandle) => Promise<IBtreeLeafNode | IBtreeInteriorNode<THandle>>;
+ export interface Handler<T, THandle> {
+    createHandle: (content: IBtreeInteriorNode<THandle> | IBtreeLeafNode) => Promise<THandle>;
+    resolveHandle: (handle: THandle) => Promise<IBtreeInteriorNode<THandle> | IBtreeLeafNode>;
     compareHandles: (a: THandle, b: THandle) => number;
+    discoverHandles: (value: T) => Iterable<THandle>;
 }
 
 /**
@@ -27,7 +28,7 @@ export class ChunkedBtree<T, THandle> implements IChunkedBtree<T, THandle> {
 
     public static create<T, THandle>(
         order: number,
-        handler: Handler<THandle>,
+        handler: Handler<T, THandle>,
         root?: IBTreeNode<T, THandle>,
         handles?: readonly THandle[],
     ) {
@@ -36,7 +37,7 @@ export class ChunkedBtree<T, THandle> implements IChunkedBtree<T, THandle> {
 
 	private constructor(
         public readonly order: number,
-        private readonly handler: Handler<THandle>,
+        private readonly handler: Handler<T, THandle>,
         root?: IBTreeNode<T, THandle>,
         handles?: readonly THandle[] | BTree<THandle, THandle>,
     ) {
@@ -89,8 +90,8 @@ export class ChunkedBtree<T, THandle> implements IChunkedBtree<T, THandle> {
         return this.cloneWithNewRoot(newRoot);
     }
 
-    public flushSync(
-        updates: Iterable<[string, T]>, deletes: Iterable<string>): ISerializedBtree<IBtreeLeafNode, THandle> {
+    public summarizeSync(
+        updates: Iterable<[string, T]>, deletes: Iterable<string>): IBTreeState<THandle, IBtreeLeafNode> {
         const map = new Map(updates);
         for (const d of deletes) {
             map.delete(d);
@@ -165,8 +166,8 @@ export class ChunkedBtree<T, THandle> implements IChunkedBtree<T, THandle> {
     }
 
     public static async load<T, THandle>(
-        { order, root, handles }: ISerializedBtree<IBtreeLeafNode | THandle, THandle>,
-        handler: Handler<THandle>,
+        { order, root, handles }: IBTreeState<THandle>,
+        handler: Handler<T, THandle>,
         isHandle: (handleOrNode: THandle | IBtreeLeafNode) => handleOrNode is THandle,
     ): Promise<ChunkedBtree<T, THandle>> {
         if (isHandle(root)) {
@@ -188,8 +189,8 @@ export class ChunkedBtree<T, THandle> implements IChunkedBtree<T, THandle> {
     }
 
     public static loadSync<T, THandle>(
-        { order, root }: ISerializedBtree<IBtreeLeafNode, THandle>,
-        handler: Handler<THandle>,
+        { order, root }: IBTreeState<THandle>,
+        handler: Handler<T, THandle>,
         isHandle: (handleOrNode: THandle | IBtreeLeafNode) => handleOrNode is THandle,
     ): ChunkedBtree<T, THandle> {
         if (isHandle(root)) {

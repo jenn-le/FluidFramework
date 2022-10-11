@@ -5,20 +5,16 @@
 
 import { ISerializedHandle } from "@fluidframework/shared-object-base";
 
-export interface ISharedPartialMapSummary<TRoot, THandle> {
-    readonly btree: ISerializedBtree<TRoot, THandle>;
-}
-
 export interface IBtreeUpdate<THandle> {
     readonly newRoot: THandle;
     readonly newHandles: THandle[];
     readonly deletedHandles: THandle[];
 }
 
-export interface ISerializedBtree<TRoot, THandle> {
+export interface ISerializedBtree<TRoot> {
     readonly order: number;
     readonly root: TRoot;
-    readonly handles: THandle[];
+    readonly handles: ISerializedHandle[];
 }
 
 export interface IBtreeInteriorNode<THandle> {
