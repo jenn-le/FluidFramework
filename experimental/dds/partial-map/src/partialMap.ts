@@ -246,7 +246,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
 
         if (this.isAttached()) {
             this.pendingState.set(key, value);
-            this.sequencedState.evict();
+            this.sequencedState.evict(this.workingSetSize());
         } else {
             // Emulate an immediate ack
             this.sequencedState.set(key, value, -1 /* disconnected, so no refSequenceNum */);
@@ -488,7 +488,9 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
                 this.sequencedState.flush(op.refSequenceNumber);
                 // TODO: this could retain downloaded chunks that are the same
                 this.btree = this.btree.update(op.update);
+                this.sequencedState.evict(this.workingSetSize());
                 this.emit(SharedPartialMapEvents.Flush, this.leaderTracker.isLeader());
+                this.tryStartFlush();
             }
         } else {
             switch (op.type) {
