@@ -24,15 +24,29 @@ class MockHandleMap {
     }
 }
 
-function mockBTree<T>(order = 3): ChunkedBtree<T, number, number> {
+class MockValueHandle {
+    public constructor(public readonly id: number) {}
+
+    public valueOf(): number {
+        return this.id;
+    }
+}
+
+function mockBTree<T extends number | string | boolean | MockValueHandle>(
+    order = 3,
+): ChunkedBtree<T, number, MockValueHandle> {
     const mockHandleMap = new MockHandleMap();
-    return ChunkedBtree.create<T, number, number>(
+    return ChunkedBtree.create<T, number, MockValueHandle>(
         order,
         {
             createHandle: async (bee) => mockHandleMap.createHandle(bee),
             resolveHandle: async (handle) => mockHandleMap.resolveHandle(handle),
-            compareHandles: (a, b) => a - b,
-            discoverHandles: () => [],
+            compareHandles: (a, b) => a.valueOf() - b.valueOf(),
+            discoverHandles: (value) => {
+                if (typeof value === "object" && value instanceof MockValueHandle) {
+                    return [value];
+                }
+            },
         },
     );
 }
@@ -89,13 +103,12 @@ describe("BTree", () => {
     });
 
     async function flushAndLoad<T>(
-        btree: ChunkedBtree<T, number, number>): Promise<ChunkedBtree<T, number, number>> {
+        btree: ChunkedBtree<T, number, MockValueHandle>): Promise<ChunkedBtree<T, number, MockValueHandle>> {
         const update = await btree.flush([], []);
         return btree.update(update);
     }
 
     it("can load lazily", async () => {
-        // eslint-disable-next-line prefer-const
         let btree = mockBTree<string>();
 
         for (const key of manyKeys) {
@@ -118,7 +131,6 @@ describe("BTree", () => {
     }
 
     it("can evict loaded nodes", async () => {
-        // eslint-disable-next-line prefer-const
         let btree = mockBTree<string>();
         assert.equal(btree.workingSetSize(), 0);
 
