@@ -46,6 +46,7 @@ function mockBTree<T extends number | string | boolean | MockValueHandle>(
                 if (typeof value === "object" && value instanceof MockValueHandle) {
                     return [value];
                 }
+                return [];
             },
         },
     );
@@ -130,23 +131,35 @@ describe("BTree", () => {
         assert(Math.abs(a - b) <= within);
     }
 
-    it("can evict loaded nodes", async () => {
-        let btree = mockBTree<string>();
-        assert.equal(btree.workingSetSize(), 0);
+    async function readAllKeys(
+        btree: ChunkedBtree<string, number, MockValueHandle>,
+        keys: string[],
+    ): Promise<string[]> {
+        const values: string[] = [];
+        for (const key of keys) {
+            assert.equal(await btree.get(key), key);
+            values.push(key);
+        }
+        return values;
+    }
 
+    async function insert(
+        btree: ChunkedBtree<string, number, MockValueHandle>,
+        count: number,
+    ): Promise<[ChunkedBtree<string, number, MockValueHandle>, string[]]> {
+        let out = btree;
         const keys: string[] = [];
-        for (let i = 0; i < 1000; i++) {
+        for (let i = 0; i < count; i++) {
             const key = i.toString();
             keys.push(key);
-            btree = await btree.set(key, key, [], []);
+            out = await out.set(key, key, [], []);
         }
+        return [out, keys];
+    }
 
-        const readAllKeys = async () => {
-            for (const key of keys) {
-                assert.equal(await btree.get(key), key);
-            }
-        };
-
+    it("can evict loaded nodes", async () => {
+        // eslint-disable-next-line prefer-const
+        let [btree, keys] = await insert(mockBTree<string>(), 1000);
         assert.equal(btree.workingSetSize(), keys.length);
 
         btree.evict(keys.length);
@@ -154,18 +167,56 @@ describe("BTree", () => {
 
         btree = await flushAndLoad(btree);
         assert.equal(btree.workingSetSize(), 0);
-        await readAllKeys();
+        await readAllKeys(btree, keys);
         assert.equal(btree.workingSetSize(), keys.length);
 
         btree.evict(keys.length);
         assertIsWithin(btree.workingSetSize(), 0, btree.order);
 
-        await readAllKeys();
+        await readAllKeys(btree, keys);
         assert.equal(btree.workingSetSize(), keys.length);
 
         const toEvict = Math.round(keys.length / 2);
         btree.evict(toEvict);
         assertIsWithin(btree.workingSetSize(), keys.length - toEvict, btree.order);
+    });
+
+    async function expectHandles(
+        btree: ChunkedBtree<string, number, MockValueHandle>,
+        modifies: number[],
+        deletes: number[],
+        added: number,
+        deleted: number,
+    ): Promise<ChunkedBtree<string, number, MockValueHandle>> {
+        const update = await btree.flush(
+            modifies.map((num) => [num.toString(), num.toString()]), deletes.map((num) => num.toString()));
+        assert.equal(update.newHandles.length, added);
+        assert.equal(update.deletedHandles.length, deleted);
+        return btree.update(update);
+    }
+
+    it("can track handles for btree nodes", async () => {
+        let btree = mockBTree<string>();
+        btree = await expectHandles(btree, [1, 2, 3, 4, 5, 6, 7, 8], [], 7, 0);
+        btree = await expectHandles(btree, [1], [], 3, 3);
+        btree = await expectHandles(btree, [], [7], 3, 3);
+        btree = await expectHandles(btree, [9], [], 3, 3);
+        btree = await expectHandles(btree, [10], [], 4, 3);
+        const allKeys = [1, 2, 3, 4, 5, 6, 8, 9, 10].map((num) => num.toString());
+        const values = await readAllKeys(btree, allKeys);
+        assert.deepEqual(values, allKeys);
+    });
+
+    it("can track handles for values", async () => {
+        let btree = mockBTree<string | MockValueHandle>();
+        btree = await flushAndLoad(btree);
+        const addedHandles = [];
+        const deletedHandles = [];
+        btree = await btree.set("test", new MockValueHandle(42), addedHandles, deletedHandles);
+        assert.deepEqual(addedHandles.splice(0)[0], new MockValueHandle(42));
+        assert.equal(deletedHandles.splice(0).length, 1);
+        btree = await btree.delete("test", deletedHandles);
+        assert.deepEqual(deletedHandles[0], new MockValueHandle(42));
     });
 });
 
