@@ -294,19 +294,21 @@ describe("PartialMap", () => {
                 });
 
                 it("Should be able to set a shared object handle as a value", async () => {
-                    const subMap = createLocalMap("subMap");
-                    map1.set("test", subMap.handle);
+                    const { map: mapA, testObjectProvider } = await setUpLocalServerPartialMap();
+                    const { map: mapB } = await setUpLocalServerPartialMap(testObjectProvider);
+                    const { map: subMap } = await setUpLocalServerPartialMap(testObjectProvider);
+                    mapA.set("test", subMap.handle);
 
-                    containerRuntimeFactory.processAllMessages();
+                    await testObjectProvider.ensureSynchronized();
 
                     // Verify the local SharedPartialMap
-                    const localSubMap = await map1.get<IFluidHandle>("test");
+                    const localSubMap = await mapA.get<IFluidHandle>("test");
                     assert(localSubMap);
                     assert.equal(
                         localSubMap.absolutePath, subMap.handle.absolutePath, "could not get the handle's path");
 
                     // Verify the remote SharedPartialMap
-                    const remoteSubMapHandle = await map2.get<IFluidHandle>("test");
+                    const remoteSubMapHandle = await mapB.get<IFluidHandle>("test");
                     assert(remoteSubMapHandle);
                     assert.equal(
                         remoteSubMapHandle.absolutePath,
@@ -317,19 +319,20 @@ describe("PartialMap", () => {
                 });
 
                 it("Should be able to set and retrieve a plain object with nested handles", async () => {
-                    const subMap = createLocalMap("subMap");
-                    const subMap2 = createLocalMap("subMap2");
+                    const { map, testObjectProvider } = await setUpLocalServerPartialMap();
+                    const { map: subMap } = await setUpLocalServerPartialMap(testObjectProvider);
+                    const { map: subMap2 } = await setUpLocalServerPartialMap(testObjectProvider);
                     const containingObject = {
                         subMapHandle: subMap.handle,
                         nestedObj: {
                             subMap2Handle: subMap2.handle,
                         },
                     };
-                    map1.set("object", containingObject);
+                    map.set("object", containingObject);
 
                     containerRuntimeFactory.processAllMessages();
 
-                    const retrieved = await map1.get("object");
+                    const retrieved = await map.get("object");
                     const retrievedSubMap = await retrieved.subMapHandle.get();
                     assert.equal(retrievedSubMap, subMap, "could not get nested map 1");
                     const retrievedSubMap2 = await retrieved.nestedObj.subMap2Handle.get();

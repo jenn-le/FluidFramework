@@ -255,7 +255,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
             return this;
         }
 
-        const opValue = this.serializer.stringify(
+        const opValue = this.serializer.encode(
             value,
             this.handle);
         const op: SetOp = {
@@ -481,7 +481,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         } else {
             switch (op.type) {
                 case OpType.Set:
-                    this.sequencedState.set(op.key, this.serializer.parse(op.value), message.sequenceNumber);
+                    this.sequencedState.set(op.key, this.serializer.decode(op.value), message.sequenceNumber);
                     if (local) {
                         this.pendingState.ackModify(op.key);
                     } else {
