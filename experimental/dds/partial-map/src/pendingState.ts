@@ -11,9 +11,10 @@ import { assert } from "@fluidframework/common-utils";
  */
 export class PendingState<T> {
     private updateNumber = 0;
+    private ackedUpdateNumber = 0;
     private readonly pendingKeys: Map<
         string,
-        { count: number; latestValue?: T; latestUpdateNumber: number; isDeleted: boolean; }> = new Map();
+        { latestValue?: T; latestUpdateNumber: number; isDeleted: boolean; }> = new Map();
     private pendingClearCount = 0;
     private latestClearUpdateNumber = -1;
 
@@ -24,7 +25,9 @@ export class PendingState<T> {
     get(key: string): { value: T | undefined; keyIsModified: boolean; isDeleted: boolean; } {
         const existing = this.pendingKeys.get(key);
         if (existing !== undefined) {
-            assert(existing.count > 0, "Entry with no pending changes should not be in map.");
+            assert(
+                existing.latestUpdateNumber > this.ackedUpdateNumber,
+                "Entry with no pending changes should not be in map.");
             if (existing.latestUpdateNumber > this.latestClearUpdateNumber) {
                 return { value: existing.latestValue, keyIsModified: true, isDeleted: existing.isDeleted };
             } else if (this.pendingClearCount > 0) {
@@ -38,12 +41,10 @@ export class PendingState<T> {
 
     set(key: string, value: T) {
         this.updateNumber++;
-        let entry = this.pendingKeys.get(key);
+        const entry = this.pendingKeys.get(key);
         if (entry === undefined) {
-            entry = { count: 1, latestValue: value, latestUpdateNumber: this.updateNumber, isDeleted: false };
-            this.pendingKeys.set(key, entry);
+            this.pendingKeys.set(key, { latestValue: value, latestUpdateNumber: this.updateNumber, isDeleted: false });
         } else {
-            entry.count++;
             entry.latestValue = value;
             entry.latestUpdateNumber = this.updateNumber;
             entry.isDeleted = false;
@@ -52,11 +53,10 @@ export class PendingState<T> {
 
     delete(key: string): void {
         this.updateNumber++;
-        let entry = this.pendingKeys.get(key);
+        const entry = this.pendingKeys.get(key);
         if (entry === undefined) {
-            entry = { count: 1, latestUpdateNumber: this.updateNumber, isDeleted: true };
+            this.pendingKeys.set(key, { latestUpdateNumber: this.updateNumber, isDeleted: true });
         } else {
-            entry.count++;
             entry.isDeleted = true;
             entry.latestValue = undefined;
             entry.latestUpdateNumber = this.updateNumber;
@@ -70,15 +70,16 @@ export class PendingState<T> {
     }
 
     ackModify(key: string): void {
+        this.ackedUpdateNumber++;
         const existing = this.pendingKeys.get(key);
         assert(existing !== undefined, "Pending key must be in map until acked.");
-        existing.count--;
-        if (existing.count === 0) {
+        if (existing.latestUpdateNumber <= this.ackedUpdateNumber) {
             this.pendingKeys.delete(key);
         }
     }
 
     ackClear(): void {
+        this.ackedUpdateNumber++;
         this.pendingClearCount--;
     }
 }

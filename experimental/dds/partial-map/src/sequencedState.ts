@@ -119,4 +119,17 @@ export class SequencedState<T> {
             }
         }
     }
+
+    public *getValueHandles<THandle>(discoverHandles: (value: T) => Iterable<THandle>): IterableIterator<THandle> {
+        const checked = new Set<string>();
+        for (const [_, key] of this.operations) {
+            if (!checked.has(key)) {
+                checked.add(key);
+                const { value } = this.get(key);
+                if (value !== undefined) {
+                    yield *discoverHandles(value);
+                }
+            }
+        }
+    }
 }

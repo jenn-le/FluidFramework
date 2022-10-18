@@ -425,7 +425,11 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
 
     public getGCData(fullGC?: boolean | undefined): IGarbageCollectionData {
         // TODO: don't use blob manager, then this method becomes a noop
-        return { gcNodes: { "/": this.btree.getAllHandles().map((handle) => handle.absolutePath) } };
+        const paths: string[] = this.btree.getAllHandles().map((handle) => handle.absolutePath);
+        for (const handle of this.sequencedState.getValueHandles<IFluidHandle>(discoverHandles)) {
+            paths.push(handle.absolutePath);
+        }
+        return { gcNodes: { "/": paths } };
     }
 
     /**
@@ -517,12 +521,20 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
 }
 
 function *discoverHandles(value: any): Iterable<IFluidHandle> {
+    if (!!value && typeof value === "object" && isFluidHandle(value)) {
+        yield value;
+    } else {
+        yield *discoverHandlesI(value);
+    }
+}
+
+function *discoverHandlesI(value: any): Iterable<IFluidHandle> {
     for (const [_, v] of Object.entries(value)) {
         if (!!v && typeof v === "object") {
             if (isFluidHandle(v)) {
                 yield v;
             } else {
-                yield* discoverHandles(v);
+                yield* discoverHandlesI(v);
             }
         }
     }
