@@ -14,7 +14,7 @@ export class PendingState<T> {
     private ackedUpdateNumber = 0;
     private readonly pendingKeys: Map<
         string,
-        { latestValue?: T; latestUpdateNumber: number; isDeleted: boolean; }> = new Map();
+        { latestValue?: T; latestUpdateNumber: number; }> = new Map();
     private pendingClearCount = 0;
     private latestClearUpdateNumber = -1;
 
@@ -28,8 +28,9 @@ export class PendingState<T> {
             assert(
                 existing.latestUpdateNumber > this.ackedUpdateNumber,
                 "Entry with no pending changes should not be in map.");
+            const isDeleted = !Object.hasOwnProperty.call(existing, "latestValue");
             if (existing.latestUpdateNumber > this.latestClearUpdateNumber) {
-                return { value: existing.latestValue, keyIsModified: true, isDeleted: existing.isDeleted };
+                return { value: existing.latestValue, keyIsModified: true, isDeleted };
             } else if (this.pendingClearCount > 0) {
                 return { value: undefined, keyIsModified: true, isDeleted: true };
             }
@@ -43,24 +44,16 @@ export class PendingState<T> {
         this.updateNumber++;
         const entry = this.pendingKeys.get(key);
         if (entry === undefined) {
-            this.pendingKeys.set(key, { latestValue: value, latestUpdateNumber: this.updateNumber, isDeleted: false });
+            this.pendingKeys.set(key, { latestValue: value, latestUpdateNumber: this.updateNumber });
         } else {
             entry.latestValue = value;
             entry.latestUpdateNumber = this.updateNumber;
-            entry.isDeleted = false;
         }
     }
 
     delete(key: string): void {
         this.updateNumber++;
-        const entry = this.pendingKeys.get(key);
-        if (entry === undefined) {
-            this.pendingKeys.set(key, { latestUpdateNumber: this.updateNumber, isDeleted: true });
-        } else {
-            entry.isDeleted = true;
-            entry.latestValue = undefined;
-            entry.latestUpdateNumber = this.updateNumber;
-        }
+        this.pendingKeys.set(key, { latestUpdateNumber: this.updateNumber });
     }
 
     clear(): void {
