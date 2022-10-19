@@ -3,7 +3,6 @@
  * Licensed under the MIT License.
  */
 
-import { assert } from "console";
 import { ISequencedDocumentMessage } from "@fluidframework/protocol-definitions";
 import {
     IChannelAttributes,
@@ -19,7 +18,7 @@ import {
     IFluidSerializer,
     SharedObject,
 } from "@fluidframework/shared-object-base";
-import { bufferToString, stringToBuffer } from "@fluidframework/common-utils";
+import { assert, bufferToString, stringToBuffer } from "@fluidframework/common-utils";
 import { IFluidHandle } from "@fluidframework/core-interfaces";
 import { pkgVersion } from "./packageVersion";
 import { IChunkedBtree, ISharedPartialMapEvents, SharedPartialMapEvents } from "./interfaces";
@@ -179,6 +178,13 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
      */
     public workingSetSize(): number {
         return Math.max(this.sequencedState.size, this.btree.workingSetSize()) + this.pendingState.size;
+    }
+
+    /**
+     * The number of entries retained in memory by the partial map.
+     */
+    public getAllHandles(): string[] {
+        return this.btree.getAllHandles().map((handle) => handle.absolutePath);
     }
 
     public get storageBtreeOrder(): number {
@@ -424,7 +430,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
 
     public getGCData(fullGC?: boolean | undefined): IGarbageCollectionData {
         // TODO: don't use blob manager, then this method becomes a noop
-        const paths: string[] = this.btree.getAllHandles().map((handle) => handle.absolutePath);
+        const paths = this.getAllHandles();
         for (const handle of this.sequencedState.getValueHandles<IFluidHandle>(discoverHandles)) {
             paths.push(handle.absolutePath);
         }
