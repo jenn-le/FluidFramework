@@ -181,6 +181,13 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         return Math.max(this.sequencedState.size, this.btree.workingSetSize()) + this.pendingState.size;
     }
 
+    /**
+     * The number of entries retained in memory by the partial map.
+     */
+    public getAllHandles(): string[] {
+        return this.btree.getAllHandles().map((handle) => handle.absolutePath);
+    }
+
     public get storageBtreeOrder(): number {
         return btreeOrder;
     }
@@ -424,7 +431,7 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
 
     public getGCData(fullGC?: boolean | undefined): IGarbageCollectionData {
         // TODO: don't use blob manager, then this method becomes a noop
-        const paths: string[] = this.btree.getAllHandles().map((handle) => handle.absolutePath);
+        const paths = this.getAllHandles();
         for (const handle of this.sequencedState.getValueHandles<IFluidHandle>(discoverHandles)) {
             paths.push(handle.absolutePath);
         }
