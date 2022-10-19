@@ -19,11 +19,10 @@ import {
     IFluidSerializer,
     SharedObject,
 } from "@fluidframework/shared-object-base";
-import { readAndParse } from "@fluidframework/driver-utils";
 import { bufferToString, stringToBuffer } from "@fluidframework/common-utils";
 import { IFluidHandle } from "@fluidframework/core-interfaces";
 import { pkgVersion } from "./packageVersion";
-import { IBtreeState, IChunkedBtree, ISharedPartialMapEvents, SharedPartialMapEvents } from "./interfaces";
+import { IChunkedBtree, ISharedPartialMapEvents, SharedPartialMapEvents } from "./interfaces";
 import { SequencedState } from "./sequencedState";
 import {
     ClearOp,
@@ -437,7 +436,9 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
      * @internal
      */
     protected async loadCore(storage: IChannelStorageService) {
-        const json = await readAndParse<IBtreeState<IFluidHandle<ArrayBufferLike>>>(storage, snapshotFileName);
+        const blob = await storage.readBlob(snapshotFileName);
+        const decoded = bufferToString(blob, "utf8");
+        const json = this.serializer.parse(decoded);
         this.btree = await ChunkedBtree.load(
             json,
             this.createHandler(),
