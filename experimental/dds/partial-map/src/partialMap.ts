@@ -3,7 +3,6 @@
  * Licensed under the MIT License.
  */
 
-import { assert } from "console";
 import { ISequencedDocumentMessage } from "@fluidframework/protocol-definitions";
 import {
     IChannelAttributes,
@@ -20,7 +19,7 @@ import {
     SharedObject,
 } from "@fluidframework/shared-object-base";
 import { readAndParse } from "@fluidframework/driver-utils";
-import { bufferToString, stringToBuffer } from "@fluidframework/common-utils";
+import { assert, bufferToString, stringToBuffer } from "@fluidframework/common-utils";
 import { IFluidHandle } from "@fluidframework/core-interfaces";
 import { pkgVersion } from "./packageVersion";
 import { IBtreeState, IChunkedBtree, ISharedPartialMapEvents, SharedPartialMapEvents } from "./interfaces";
