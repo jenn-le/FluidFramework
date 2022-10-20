@@ -203,7 +203,7 @@ export class ChunkedBtree<T, THandle, TValueHandle> implements IChunkedBtree<T, 
     }
 
     public update(update: IBtreeUpdate<THandle, TValueHandle>): ChunkedBtree<T, THandle, TValueHandle> {
-        const { newRoot, newHandles, deletedHandles } = update;
+        const { newRoot, newSize, newHandles, deletedHandles } = update;
         const handles = this.handles.clone();
         for (const handle of newHandles) {
             handles.set(handle, handle);
@@ -211,7 +211,7 @@ export class ChunkedBtree<T, THandle, TValueHandle> implements IChunkedBtree<T, 
         handles.deleteKeys(deletedHandles);
         return new ChunkedBtree(
             this.order,
-            this.size,
+            newSize,
             this.handler,
             new LazyBTreeNode(
                 newRoot,
