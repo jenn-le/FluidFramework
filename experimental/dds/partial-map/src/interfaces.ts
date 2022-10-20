@@ -81,6 +81,12 @@ export enum SharedPartialMapEvents {
 export interface IChunkedBtree<T, THandle, TValueHandle> {
     order: number;
 
+    count: number;
+
+    min(): Promise<[string, T] | undefined>;
+
+    max(): Promise<[string, T] | undefined>;
+
     get(key: string): Promise<T | undefined>;
 
     has(key: string): Promise<boolean>;
@@ -90,11 +96,7 @@ export interface IChunkedBtree<T, THandle, TValueHandle> {
     flush(
         updates: Map<string, T>,
         deletes: Set<string>,
-    ): Promise<{
-        readonly newRoot: THandle;
-        readonly newHandles: (THandle | TValueHandle)[];
-        readonly deletedHandles: (THandle | TValueHandle)[];
-    }>;
+    ): Promise<IBtreeUpdate<THandle, TValueHandle>>;
 
     summarizeSync(
         updates: Map<string, T>,
@@ -113,12 +115,14 @@ export interface IChunkedBtree<T, THandle, TValueHandle> {
 /** The state used to to save/load a ChunkedBTree */
 export interface IBtreeState<THandle, TRoot extends IBtreeLeafNode | THandle = IBtreeLeafNode | THandle> {
     readonly order: number;
+    readonly size: number;
     readonly root: TRoot;
     readonly handles: THandle[];
 }
 
 /** The state used to to update a ChunkedBTree */
 export interface IBtreeUpdate<THandle, TValueHandle> {
+    readonly newSize: number;
     readonly newRoot: THandle;
     readonly newHandles: (THandle | TValueHandle)[];
     readonly deletedHandles: (THandle | TValueHandle)[];

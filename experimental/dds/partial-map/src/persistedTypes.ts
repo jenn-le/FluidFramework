@@ -6,6 +6,7 @@
 import { ISerializedHandle } from "@fluidframework/shared-object-base";
 
 export interface ISerializedBtreeUpdate {
+    readonly newSize: number;
     readonly newRoot: ISerializedHandle;
     readonly newHandles: ISerializedHandle[];
     readonly deletedHandles: ISerializedHandle[];
@@ -13,6 +14,7 @@ export interface ISerializedBtreeUpdate {
 
 export interface ISerializedBtree<TRoot> {
     readonly order: number;
+    readonly size: number;
     readonly root: TRoot;
     readonly handles: ISerializedHandle[];
 }

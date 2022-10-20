@@ -191,6 +191,18 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         return btreeOrder;
     }
 
+    public get count(): number {
+        return this.btree.count;
+    }
+
+    public async min<T = Serializable>(): Promise<[string, T] | undefined> {
+        return this.btree.min();
+    }
+
+    public async max<T = Serializable>(): Promise<[string, T] | undefined> {
+        return this.btree.max();
+    }
+
     /**
      * Read a key/value in the map.
      */
@@ -487,7 +499,9 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
                 this.btree = this.btree.update(this.serializer.decode(op.update));
                 this.sequencedState.evict(this.workingSetSize());
                 this.emit(SharedPartialMapEvents.Flush, this.leaderTracker.isLeader());
-                this.tryStartFlush();
+                if (this.leaderTracker.isLeader()) {
+                    this.tryStartFlush();
+                }
             }
         } else {
             switch (op.type) {
