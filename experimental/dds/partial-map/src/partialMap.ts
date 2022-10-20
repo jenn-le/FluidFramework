@@ -21,7 +21,7 @@ import {
 import { assert, bufferToString, stringToBuffer } from "@fluidframework/common-utils";
 import { IFluidHandle } from "@fluidframework/core-interfaces";
 import { pkgVersion } from "./packageVersion";
-import { IChunkedBtree, ISharedPartialMapEvents, SharedPartialMapEvents } from "./interfaces";
+import { IBtreeUpdate, IChunkedBtree, ISharedPartialMapEvents, SharedPartialMapEvents } from "./interfaces";
 import { SequencedState } from "./sequencedState";
 import {
     ClearOp,
@@ -360,23 +360,27 @@ export class SharedPartialMap extends SharedObject<ISharedPartialMapEvents> {
         const [updates, deletes] = this.sequencedState.getFlushableChanges();
         const refSequenceNumber = this.runtime.deltaManager.lastSequenceNumber;
         let newRoot: IFluidHandle<ArrayBufferLike>;
+        let newSize: number;
         let newHandles: (IFluidHandle<ArrayBufferLike> | IFluidHandle)[];
         let deletedHandles: (IFluidHandle<ArrayBufferLike> | IFluidHandle)[];
         try {
-            ({ newRoot, newHandles, deletedHandles } = await this.btree.flush(updates, deletes));
+            ({ newRoot, newSize, newHandles, deletedHandles } = await this.btree.flush(updates, deletes));
         } catch (error) {
             // TODO: logging
             this.pendingFlush = undefined;
             return false;
         }
 
+        const update: IBtreeUpdate<IFluidHandle<ArrayBufferLike>, IFluidHandle> = {
+            newSize,
+            newRoot,
+            newHandles,
+            deletedHandles,
+        };
+
         const evictionOp: FlushOp = {
             type: OpType.Flush,
-            update: this.serializer.encode({
-                newRoot,
-                newHandles,
-                deletedHandles,
-            }, this.handle),
+            update: this.serializer.encode(update, this.handle),
             refSequenceNumber,
         };
 
