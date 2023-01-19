@@ -4,7 +4,6 @@
  */
 
 import { assert, IsoBuffer } from "@fluidframework/common-utils";
-import { ReadBuffer } from "./ReadBufferUtils";
 import {
     BlobCore,
     codeToBytesMap,
@@ -13,7 +12,6 @@ import {
     MarkerCodesEnd,
     MarkerCodesStart,
     NodeCore,
-    TreeBuilder,
 } from "./zipItDataRepresentationUtils";
 
 /**
@@ -52,11 +50,11 @@ export class WriteBuffer {
         assert(code === 0, 0x226 /* Should write complete data */);
     }
 
-    public done(): ReadBuffer {
+    public done(): Uint8Array {
         assert(this.data !== undefined, 0x227 /* "Data should be there" */);
         // We can slice it to have smaller memory representation.
         // But it will be way more expensive in terms of CPU cycles!
-        const buffer = new ReadBuffer(this.data.subarray(0, this.index));
+        const buffer = this.data.subarray(0, this.index);
         this.data = undefined;
         return buffer;
     }
@@ -64,7 +62,6 @@ export class WriteBuffer {
 
 // This list of maps below is reverse mapping of Marker Codes specified in zipItDataRepresentationUtils.ts file.
 // We can also found them on server filestore code.
-// eslint-disable-next-line max-len
 // https://onedrive.visualstudio.com/SharePoint%20Online/_git/SPO?path=/cobalt/Base/Property/BinaryEncodedPropertyReader.cs&version=GBmaster&_a=contents
 
 /**
@@ -263,11 +260,7 @@ export class TreeBuilderSerializer extends NodeCoreSerializer {
         super();
     }
 
-    static load(buffer: ReadBuffer): TreeBuilder {
-        return TreeBuilder.load(buffer);
-    }
-
-    public serialize(): ReadBuffer {
+    public serialize(): Uint8Array {
         const buffer = new WriteBuffer();
         super.serialize(buffer);
         return buffer.done();

@@ -7,15 +7,31 @@ import { strict as assert } from "assert";
 import { benchmark, BenchmarkType, isInPerformanceTestingMode } from "@fluid-tools/benchmark";
 import { Jsonable } from "@fluidframework/datastore-definitions";
 import {
-    ITreeCursorNew, jsonableTreeFromCursor, singleTextCursorNew, EmptyKey,
+    ITreeCursor,
+    singleJsonCursor,
+    jsonableTreeFromCursor,
+    EmptyKey,
+    cursorToJsonObject,
+    jsonSchemaData,
+    JsonCompatible,
 } from "../../..";
-// Allow importing from this specific file which is being tested:
-/* eslint-disable-next-line import/no-internal-modules */
-import { JsonCursor } from "../../../domains/json/jsonCursor";
-import { jsonableTreeFromCursorNew, mapTreeFromCursor, singleMapTreeCursor } from "../../../feature-libraries";
+import {
+    buildForest,
+    defaultSchemaPolicy,
+    mapTreeFromCursor,
+    singleMapTreeCursor,
+    singleTextCursor,
+} from "../../../feature-libraries";
+import {
+    initializeForest,
+    InMemoryStoredSchemaRepository,
+    JsonableTree,
+    moveToDetachedField,
+} from "../../../core";
 import { Canada, generateCanada } from "./canada";
 import { averageTwoValues, sum, sumMap } from "./benchmarks";
-import { generateTwitterJsonByByteSize, TwitterStatus } from "./twitter";
+import { generateTwitterJsonByByteSize, Twitter } from "./twitter";
+import { CitmCatalog, generateCitmJson } from "./citm";
 
 // IIRC, extracting this helper from clone() encourages V8 to inline the terminal case at
 // the leaves, but this should be verified.
@@ -28,7 +44,13 @@ function cloneObject<T, J = Jsonable<T>>(obj: J): J {
         // PERF: Nested array allocs make 'Object.entries()' ~2.4x slower than reading
         //       value via 'value[key]', even when destructuring. (node 14 x64)
         for (const key of Object.keys(obj)) {
-            result[key] = clone((obj as any)[key]);
+            // Like `result[key] = clone((obj as any)[key]);` but safe for when key == "__proto__"
+            Object.defineProperty(result, key, {
+                enumerable: true,
+                configurable: true,
+                writable: true,
+                value: clone((obj as any)[key]),
+            });
         }
         return result as J;
     }
@@ -40,9 +62,7 @@ function cloneObject<T, J = Jsonable<T>>(obj: J): J {
 function clone<T>(value: Jsonable<T>): Jsonable<T> {
     // PERF: Separate clone vs. cloneObject yields an ~11% speedup in 'canada.json',
     //       likely due to inlining short-circuiting recursing at leaves (node 14 x64).
-    return typeof value !== "object" || value === null
-        ? value
-        : cloneObject(value);
+    return typeof value !== "object" || value === null ? value : cloneObject(value);
 }
 
 /**
@@ -52,84 +72,113 @@ function bench(
     data: {
         name: string;
         getJson: () => any;
-        dataConsumer: (cursor: ITreeCursorNew, calculate: (...operands: any[]) => void) => any;
+        dataConsumer: (cursor: ITreeCursor, calculate: (...operands: any[]) => void) => any;
     }[],
 ) {
+    const schema = new InMemoryStoredSchemaRepository(defaultSchemaPolicy, jsonSchemaData);
     for (const { name, getJson, dataConsumer } of data) {
-        const json = getJson();
-        const encodedTree = jsonableTreeFromCursor(new JsonCursor(json));
+        describe(name, () => {
+            let json: JsonCompatible;
+            let encodedTree: JsonableTree;
+            before(() => {
+                json = getJson();
+                encodedTree = jsonableTreeFromCursor(singleJsonCursor(json));
+            });
 
-        benchmark({
-            type: BenchmarkType.Measurement,
-            title: `Direct: '${name}'`,
-            before: () => {
-                const cloned = clone(json);
-                assert.deepEqual(cloned, json,
-                    "clone() must return an equivalent tree.");
-                assert.notEqual(cloned, json,
-                    "clone() must not return the same tree instance.");
-            },
-            benchmarkFn: () => {
-                clone(json);
-            },
-        });
+            benchmark({
+                type: BenchmarkType.Measurement,
+                title: "Clone JS Object",
+                before: () => {
+                    const cloned = clone<any>(json);
+                    assert.deepEqual(cloned, json, "clone() must return an equivalent tree.");
+                    assert.notEqual(
+                        cloned,
+                        json,
+                        "clone() must not return the same tree instance.",
+                    );
+                },
+                benchmarkFn: () => {
+                    clone<any>(json);
+                },
+            });
 
-        const cursorFactories: [string, () => ITreeCursorNew][] = [
-            ["TextCursor", () => singleTextCursorNew(encodedTree)],
-            ["MapCursor", () => singleMapTreeCursor(mapTreeFromCursor(singleTextCursorNew(encodedTree)))],
-        ];
+            const cursorFactories: [string, () => ITreeCursor][] = [
+                ["JsonCursor", () => singleJsonCursor(json)],
+                ["TextCursor", () => singleTextCursor(encodedTree)],
+                [
+                    "MapCursor",
+                    () => singleMapTreeCursor(mapTreeFromCursor(singleTextCursor(encodedTree))),
+                ],
+                [
+                    "object-forest Cursor",
+                    () => {
+                        const forest = buildForest(schema);
+                        initializeForest(forest, [singleTextCursor(encodedTree)]);
+                        const cursor = forest.allocateCursor();
+                        moveToDetachedField(forest, cursor);
+                        assert(cursor.firstNode());
+                        return cursor;
+                    },
+                ],
+            ];
 
-        const consumers: [
-            string,
-            (cursor: ITreeCursorNew,
-                dataConsumer: (cursor: ITreeCursorNew, calculate: (...operands: any[]) => void) => any
-            ) => void,
-        ][] = [
-                // TODO: finish porting other cursor code and enable this.
-                // ["cursorToJsonObject", cursorToJsonObjectNew],
-                ["jsonableTreeFromCursor", jsonableTreeFromCursorNew],
+            const consumers: [
+                string,
+                (
+                    cursor: ITreeCursor,
+                    dataConsumer: (
+                        cursor: ITreeCursor,
+                        calculate: (...operands: any[]) => void,
+                    ) => any,
+                ) => void,
+            ][] = [
+                ["cursorToJsonObject", cursorToJsonObject],
+                ["jsonableTreeFromCursor", jsonableTreeFromCursor],
                 ["mapTreeFromCursor", mapTreeFromCursor],
                 ["sum", sum],
                 ["sum-map", sumMap],
                 ["averageTwoValues", averageTwoValues],
             ];
 
-        for (const [consumerName, consumer] of consumers) {
-            for (const [factoryName, factory] of cursorFactories) {
-                let cursor: ITreeCursorNew;
-                benchmark({
-                    type: BenchmarkType.Measurement,
-                    title: `${consumerName}(${factoryName}): '${name}'`,
-                    before: () => {
-                        cursor = factory();
-                        // TODO: validate behavior
-                        // assert.deepEqual(cursorToJsonObject(cursor), json, "data should round trip through json");
-                        // assert.deepEqual(
-                        //     jsonableTreeFromCursor(cursor), encodedTree, "data should round trip through jsonable");
-                    },
-                    benchmarkFn: () => {
-                        consumer(cursor, dataConsumer);
-                    },
-                });
+            for (const [consumerName, consumer] of consumers) {
+                for (const [factoryName, factory] of cursorFactories) {
+                    let cursor: ITreeCursor;
+                    benchmark({
+                        type: BenchmarkType.Measurement,
+                        title: `${consumerName}(${factoryName})`,
+                        before: () => {
+                            cursor = factory();
+                            // TODO: validate behavior
+                            // assert.deepEqual(cursorToJsonObject(cursor), json, "data should round trip through json");
+                            // assert.deepEqual(
+                            //     jsonableTreeFromCursor(cursor), encodedTree, "data should round trip through jsonable");
+                        },
+                        benchmarkFn: () => {
+                            consumer(cursor, dataConsumer);
+                        },
+                    });
+                }
             }
-        }
+        });
     }
 }
 
 const canada = generateCanada(
     // Use the default (large) data set for benchmarking, otherwise use a small dataset.
-    isInPerformanceTestingMode
-        ? undefined
-        : [2, 10]);
+    isInPerformanceTestingMode ? undefined : [2, 10],
+);
 
-function extractCoordinatesFromCanada(cursor: ITreeCursorNew, calculate: (x: number, y: number) => void): void {
-    cursor.enterField(Canada.FeatureKey);
+function extractCoordinatesFromCanada(
+    cursor: ITreeCursor,
+    calculate: (x: number, y: number) => void,
+): void {
+    cursor.enterField(Canada.SharedTreeFieldKey.features);
     cursor.enterNode(0);
     cursor.enterField(EmptyKey);
     cursor.enterNode(0);
-    cursor.enterField(Canada.GeometryKey);
+    cursor.enterField(Canada.SharedTreeFieldKey.geometry);
     cursor.enterNode(0);
-    cursor.enterField(Canada.CoordinatesKey);
+    cursor.enterField(Canada.SharedTreeFieldKey.coordinates);
     cursor.enterNode(0);
 
     cursor.enterField(EmptyKey);
@@ -166,19 +215,22 @@ function extractCoordinatesFromCanada(cursor: ITreeCursorNew, calculate: (x: num
     cursor.exitField();
 }
 
-function extractAvgValsFromTwitter(cursor: ITreeCursorNew, calculate: (x: number, y: number) => void): void {
-    cursor.enterField(TwitterStatus.statusesKey); // move from root to field
+function extractAvgValsFromTwitter(
+    cursor: ITreeCursor,
+    calculate: (x: number, y: number) => void,
+): void {
+    cursor.enterField(Twitter.SharedTreeFieldKey.statuses); // move from root to field
     cursor.enterNode(0); // move from field to node at 0 (which is an object of type array)
     cursor.enterField(EmptyKey); // enter the array field at the node,
 
     for (let result = cursor.firstNode(); result; result = cursor.nextNode()) {
-        cursor.enterField(TwitterStatus.retweetCountKey);
+        cursor.enterField(Twitter.SharedTreeFieldKey.retweetCount);
         cursor.enterNode(0);
         const retweetCount = cursor.value as number;
         cursor.exitNode();
         cursor.exitField();
 
-        cursor.enterField(TwitterStatus.favoriteCountKey);
+        cursor.enterField(Twitter.SharedTreeFieldKey.favoriteCount);
         cursor.enterNode(0);
         const favoriteCount = cursor.value;
         cursor.exitNode();
@@ -192,9 +244,47 @@ function extractAvgValsFromTwitter(cursor: ITreeCursorNew, calculate: (x: number
     cursor.exitField();
 }
 
+function extractAvgValsFromCitm(
+    cursor: ITreeCursor,
+    calculate: (x: number, y: number) => void,
+): void {
+    cursor.enterField(CitmCatalog.SharedTreeFieldKey.performances);
+    cursor.enterNode(0);
+    cursor.enterField(EmptyKey);
+
+    // iterate over each performance
+    for (
+        let performanceIterator = cursor.firstNode();
+        performanceIterator;
+        performanceIterator = cursor.nextNode()
+    ) {
+        cursor.enterField(CitmCatalog.SharedTreeFieldKey.seatCategories);
+        const numSeatCategories = cursor.getFieldLength();
+        cursor.exitField();
+
+        cursor.enterField(CitmCatalog.SharedTreeFieldKey.start);
+        cursor.enterNode(0);
+        const startTimeEpoch = cursor.value as number;
+        cursor.exitNode();
+        cursor.exitField();
+
+        calculate(numSeatCategories, startTimeEpoch);
+    }
+
+    // Reset the cursor state
+    cursor.exitField();
+    cursor.exitNode();
+    cursor.exitField();
+}
+
 // The original benchmark twitter.json is 466906 Bytes according to getSizeInBytes.
 const twitter = generateTwitterJsonByByteSize(isInPerformanceTestingMode ? 2500000 : 466906, true);
+// The original benchmark citm_catalog.json 500299 Bytes according to getSizeInBytes.
+const citm = isInPerformanceTestingMode
+    ? generateCitmJson(2, 2500000)
+    : generateCitmJson(1, 500299);
 describe("ITreeCursor", () => {
     bench([{ name: "canada", getJson: () => canada, dataConsumer: extractCoordinatesFromCanada }]);
     bench([{ name: "twitter", getJson: () => twitter, dataConsumer: extractAvgValsFromTwitter }]);
+    bench([{ name: "citm", getJson: () => citm, dataConsumer: extractAvgValsFromCitm }]);
 });

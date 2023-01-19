@@ -37,7 +37,6 @@ import { IRequest } from '@fluidframework/core-interfaces';
 import { IResolvedUrl } from '@fluidframework/driver-definitions';
 import { IResponse } from '@fluidframework/core-interfaces';
 import { ISequencedDocumentMessage } from '@fluidframework/protocol-definitions';
-import { ISignalClient } from '@fluidframework/protocol-definitions';
 import { ISignalMessage } from '@fluidframework/protocol-definitions';
 import { ITelemetryBaseLogger } from '@fluidframework/common-definitions';
 import { ITelemetryLogger } from '@fluidframework/common-definitions';
@@ -84,6 +83,8 @@ export class Container extends EventEmitterWithErrorHandling<IContainerEvents> i
     get deltaManager(): IDeltaManager<ISequencedDocumentMessage, IDocumentMessage>;
     // (undocumented)
     disconnect(): void;
+    // (undocumented)
+    dispose?(error?: ICriticalContainerError): void;
     forceReadonly(readonly: boolean): void;
     // (undocumented)
     getAbsoluteUrl(relativeUrl: string): Promise<string | undefined>;
@@ -226,7 +227,7 @@ export class Loader implements IHostLoader {
 }
 
 // @public
-export type ProtocolHandlerBuilder = (attributes: IDocumentAttributes, snapshot: IQuorumSnapshot, sendProposal: (key: string, value: any) => number, initialClients: ISignalClient[]) => IProtocolHandler;
+export type ProtocolHandlerBuilder = (attributes: IDocumentAttributes, snapshot: IQuorumSnapshot, sendProposal: (key: string, value: any) => number) => IProtocolHandler;
 
 // @public (undocumented)
 export class RelativeLoader implements ILoader {
