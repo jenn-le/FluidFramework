@@ -8,7 +8,7 @@ on:
 
 jobs:
   merge_main_to_docs:
-    name: Cleanup old branches
+    name: Merge Main to Docs Branch
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
