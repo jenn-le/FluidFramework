@@ -166,7 +166,7 @@ class ObjectForest extends SimpleDependee implements IEditableForest {
 			enterField: (key: FieldKey): void => cursor.enterField(key),
 			exitField: (key: FieldKey): void => cursor.exitField(),
 		};
-		visitDelta(delta, visitor);
+		visit(delta, visitor);
 		cursor.free();
 
 		this.events.emit("afterDelta", delta);

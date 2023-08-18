@@ -395,10 +395,12 @@ export class SharedTreeView implements ISharedTreeView {
 								// TODO: update the DeltaVisitor contract to support batch-detaching contiguous nodes
 								// into individual roots.
 								for (let iNode = 0; iNode < count; iNode += 1) {
-									const fieldKey = this.repairDataIndex.getFieldKey(
-										brand(`${this.repairDataCounter++}`),
+									const fieldKey = this.repairDataIndex.createEntry(
+										nodeId,
+										brand(this.repairDataCounter++),
 									);
-									this.repairDataIndex.setFieldKey(nodeId, fieldKey);
+									// We need to create new IDs to represent the combination of the RemovedNodeId
+									// major and minor.
 									const moveId: Delta.MoveId = brand(idAllocator());
 									visitor.onMoveOut(index, 1, moveId);
 									repairDataCreation.push({ fieldKey, moveId });
@@ -415,6 +417,11 @@ export class SharedTreeView implements ISharedTreeView {
 						visitor.exitField(fieldKey);
 					}
 				};
+				// OTHER TODO'S:
+				// Optional field test to verify the nodeId is set on Delta.Delete
+				// Forest test suite should check that the passed in visit function is used instead of visitDelta
+				// SharedTreeView test to make sure that deleting content in optional and sequence fields leads to the creation of repair data in the forest
+				// change family's intoDelta needs to take a TaggedChange<TChangeset> -> same for FieldKind -> needs to be passed down to
 				void this._forest.applyDelta(delta, visit);
 				this._nodeKeyIndex.scanKeys(this.context);
 				this._events.emit("afterBatch");
