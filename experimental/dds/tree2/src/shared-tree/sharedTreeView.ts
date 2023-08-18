@@ -392,6 +392,8 @@ export class SharedTreeView implements ISharedTreeView {
 					const wrappedVisitor = Object.setPrototypeOf(visitor, {
 						onDelete: (index: number, count: number, nodeId?: Delta.RemovedNodeId) => {
 							if (nodeId !== undefined) {
+								// TODO: update the DeltaVisitor contract to support batch-detaching contiguous nodes
+								// into individual roots.
 								for (let iNode = 0; iNode < count; iNode += 1) {
 									const fieldKey = this.repairDataIndex.getFieldKey(
 										brand(`${this.repairDataCounter++}`),
