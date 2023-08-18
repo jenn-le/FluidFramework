@@ -232,6 +232,12 @@ export function brandOpaque<T extends BrandedType<any, string>>(value: isAny<Val
 export function buildForest(schema: StoredSchemaRepository, anchors?: AnchorSet): IEditableForest;
 
 // @alpha
+export interface ChangeAtomId {
+    readonly localId: ChangesetLocalId;
+    readonly revision?: RevisionTag;
+}
+
+// @alpha
 export type ChangesetLocalId = Brand<number, "ChangesetLocalId">;
 
 // @alpha
@@ -394,6 +400,8 @@ export const defaultSchemaPolicy: FullSchemaPolicy;
 
 // @alpha
 interface Delete<TTree = ProtoNode> extends HasModifications<TTree> {
+    // (undocumented)
+    readonly changeId?: ChangeAtomId;
     readonly count: number;
     // (undocumented)
     readonly type: typeof MarkType.Delete;
@@ -430,6 +438,29 @@ declare namespace Delta {
     }
 }
 export { Delta }
+
+// @alpha
+export type DeltaVisit = (delta: Delta.Root, visitor: DeltaVisitor) => void;
+
+// @alpha
+export interface DeltaVisitor {
+    // (undocumented)
+    enterField(key: FieldKey): void;
+    // (undocumented)
+    enterNode(index: number): void;
+    // (undocumented)
+    exitField(key: FieldKey): void;
+    // (undocumented)
+    exitNode(index: number): void;
+    // (undocumented)
+    onDelete(index: number, count: number, changeId?: ChangeAtomId): void;
+    // (undocumented)
+    onInsert(index: number, content: Delta.ProtoNodes): void;
+    // (undocumented)
+    onMoveIn(index: number, count: number, id: Delta.MoveId): void;
+    // (undocumented)
+    onMoveOut(index: number, count: number, id: Delta.MoveId): void;
+}
 
 // @alpha
 export interface Dependee extends NamedComputation {
@@ -839,7 +870,7 @@ export interface IDefaultEditBuilder {
 // @alpha
 export interface IEditableForest extends IForestSubscription {
     readonly anchors: AnchorSet;
-    applyDelta(delta: Delta.Root): void;
+    applyDelta(delta: Delta.Root, visit?: DeltaVisit): void;
 }
 
 // @alpha

@@ -25,6 +25,7 @@ import {
 	ITreeSubscriptionCursorState,
 	rootFieldKey,
 	mapCursorField,
+	DeltaVisit,
 } from "../../core";
 import { brand, fail, getOrAddEmptyToMap } from "../../util";
 import { createEmitter } from "../../events";
@@ -81,7 +82,7 @@ class ChunkedForest extends SimpleDependee implements IEditableForest {
 		this.anchors.forget(anchor);
 	}
 
-	public applyDelta(delta: Delta.Root): void {
+	public applyDelta(delta: Delta.Root, visit: DeltaVisit = visitDelta): void {
 		this.events.emit("beforeDelta", delta);
 		this.invalidateDependents();
 
@@ -207,7 +208,7 @@ class ChunkedForest extends SimpleDependee implements IEditableForest {
 				mutableChunk = top.mutableChunk;
 			},
 		};
-		visitDelta(delta, visitor);
+		visit(delta, visitor);
 
 		this.events.emit("afterDelta", delta);
 	}

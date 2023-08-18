@@ -77,6 +77,11 @@ function cellDeltaFromMark<TNodeChange>(
 				return {
 					type: Delta.MarkType.Delete,
 					count: mark.count,
+					changeId: {
+						// TODO: Use the revision tag from the changeset if there is none on the field change
+						revision: mark.revision,
+						localId: mark.id,
+					},
 				};
 			}
 			case "MoveOut":

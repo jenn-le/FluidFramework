@@ -12,6 +12,7 @@ import {
 	setInRangeMap,
 } from "../../util";
 import { FieldKey } from "../schema-stored";
+import { ChangeAtomId } from "../rebase";
 import * as Delta from "./delta";
 
 /**
@@ -97,8 +98,18 @@ export function visitDelta(delta: Delta.Root, visitor: DeltaVisitor): void {
 	}
 }
 
+/**
+ * A function that walks a visitor through a delta.
+ * @alpha
+ */
+export type DeltaVisit = (delta: Delta.Root, visitor: DeltaVisitor) => void;
+
+/**
+ * An object that can be walked through a Delta.
+ * @alpha
+ */
 export interface DeltaVisitor {
-	onDelete(index: number, count: number): void;
+	onDelete(index: number, count: number, changeId?: ChangeAtomId): void;
 	onInsert(index: number, content: Delta.ProtoNodes): void;
 	onMoveOut(index: number, count: number, id: Delta.MoveId): void;
 	onMoveIn(index: number, count: number, id: Delta.MoveId): void;

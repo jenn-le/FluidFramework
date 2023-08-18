@@ -22,6 +22,7 @@ export interface FieldChangeHandler<
 	readonly rebaser: FieldChangeRebaser<TChangeset>;
 	readonly codecsFactory: (childCodec: IJsonCodec<NodeChangeset>) => ICodecFamily<TChangeset>;
 	readonly editor: TEditor;
+	// TODO: take a TaggedChange<TChangeset>
 	intoDelta(change: TChangeset, deltaFromChild: ToDelta): Delta.MarkList;
 
 	/**

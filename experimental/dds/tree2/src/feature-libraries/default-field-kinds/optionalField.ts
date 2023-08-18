@@ -11,6 +11,7 @@ import {
 	ITreeCursorSynchronous,
 	tagChange,
 	ChangesetLocalId,
+	ChangeAtomId,
 } from "../../core";
 import { fail, Mutable } from "../../util";
 import { singleTextCursor, jsonableTreeFromCursor } from "../treeTextCursor";
@@ -328,12 +329,17 @@ function deltaForDelete(
 	nodeExists: boolean,
 	nodeChange: NodeChangeset | undefined,
 	deltaFromNode: ToDelta,
+	changeId: ChangeAtomId,
 ): Delta.Mark[] {
 	if (!nodeExists) {
 		return [];
 	}
 
-	const deleteDelta: Mutable<Delta.Delete> = { type: Delta.MarkType.Delete, count: 1 };
+	const deleteDelta: Mutable<Delta.Delete> = {
+		type: Delta.MarkType.Delete,
+		count: 1,
+		changeId,
+	};
 	if (nodeChange !== undefined) {
 		const modify = deltaFromNode(nodeChange);
 		deleteDelta.fields = modify.fields;
@@ -349,10 +355,13 @@ export function optionalFieldIntoDelta(change: OptionalChangeset, deltaFromChild
 		return [];
 	}
 
+	// TODO: Use the revision tag from the changeset if there is none on the field change
+	const changeAtomId = { revision: change.fieldChange.revision, localId: change.fieldChange.id };
 	const deleteDelta = deltaForDelete(
 		!change.fieldChange.wasEmpty,
 		change.deletedBy === undefined ? change.childChange : undefined,
 		deltaFromChild,
+		changeAtomId,
 	);
 
 	const update = change.fieldChange?.newContent;

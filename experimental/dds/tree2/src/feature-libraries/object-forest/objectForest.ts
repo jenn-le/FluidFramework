@@ -31,6 +31,7 @@ import {
 	FieldUpPath,
 	ForestEvents,
 	PathRootPrefix,
+	DeltaVisit,
 } from "../../core";
 import { brand, fail, assertValidIndex } from "../../util";
 import { CursorWithNode, SynchronousCursor } from "../treeCursorUtils";
@@ -91,7 +92,7 @@ class ObjectForest extends SimpleDependee implements IEditableForest {
 		this.anchors.forget(anchor);
 	}
 
-	public applyDelta(delta: Delta.Root): void {
+	public applyDelta(delta: Delta.Root, visit: DeltaVisit = visitDelta): void {
 		this.events.emit("beforeDelta", delta);
 		this.invalidateDependents();
 		assert(

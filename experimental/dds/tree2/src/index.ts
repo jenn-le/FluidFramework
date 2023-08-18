@@ -78,6 +78,9 @@ export {
 	MapTree,
 	LocalCommitSource,
 	forbiddenFieldKindIdentifier,
+	DeltaVisit,
+	ChangeAtomId,
+	DeltaVisitor,
 } from "./core";
 
 export {

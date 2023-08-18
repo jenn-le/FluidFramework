@@ -11,6 +11,7 @@ import {
 	Anchor,
 	ITreeCursorSynchronous,
 	rootFieldKey,
+	DeltaVisit,
 } from "../tree";
 import { IForestSubscription, ITreeSubscriptionCursor } from "./forest";
 
@@ -33,7 +34,7 @@ export interface IEditableForest extends IForestSubscription {
 	 * Applies the supplied Delta to the forest.
 	 * Does NOT update anchors.
 	 */
-	applyDelta(delta: Delta.Root): void;
+	applyDelta(delta: Delta.Root, visit?: DeltaVisit): void;
 }
 
 export function initializeForest(forest: IEditableForest, content: ITreeCursorSynchronous[]): void {

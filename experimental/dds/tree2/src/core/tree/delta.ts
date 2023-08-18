@@ -4,6 +4,7 @@
  */
 
 import { Brand, Opaque } from "../../util";
+import { ChangeAtomId } from "../rebase";
 import { FieldKey } from "../schema-stored";
 import { ITreeCursorSynchronous } from "./cursor";
 
@@ -201,6 +202,8 @@ export interface Modify<TTree = ProtoNode> extends HasModifications<TTree> {
 /**
  * Describes the deletion of a contiguous range of node.
  * @alpha
+ *
+ * TODO: rename to Remove and add a flag to communicate true deletion (i.e., remove and GC)
  */
 export interface Delete<TTree = ProtoNode> extends HasModifications<TTree> {
 	readonly type: typeof MarkType.Delete;
@@ -208,6 +211,8 @@ export interface Delete<TTree = ProtoNode> extends HasModifications<TTree> {
 	 * Must be 1 when `fields` is populated.
 	 */
 	readonly count: number;
+	// TODO: should this be required?
+	readonly changeId?: ChangeAtomId;
 }
 
 /**

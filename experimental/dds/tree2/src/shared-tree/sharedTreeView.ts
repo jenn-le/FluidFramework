@@ -16,6 +16,12 @@ import {
 	assertIsRevisionTag,
 	UndoRedoManager,
 	LocalCommitSource,
+	DeltaVisit,
+	visitDelta,
+	DeltaVisitor,
+	Delta,
+	ChangeAtomId,
+	FieldKey,
 } from "../core";
 import { HasListeners, IEmitter, ISubscribable, createEmitter } from "../events";
 import {
@@ -40,6 +46,8 @@ import {
 	ModularChangeset,
 	nodeKeyFieldKey,
 	FieldSchema,
+	TreeIndex,
+	idAllocatorFromMaxId,
 } from "../feature-libraries";
 import { SharedTreeBranch } from "../shared-tree-core";
 import { TransactionResult, brand } from "../util";
@@ -379,7 +387,34 @@ export class SharedTreeView implements ISharedTreeView {
 		branch.on("change", ({ change }) => {
 			if (change !== undefined) {
 				const delta = this.changeFamily.intoDelta(change);
-				this._forest.applyDelta(delta);
+				const visit: DeltaVisit = (d: Delta.Root, visitor: DeltaVisitor) => {
+					const idAllocator = idAllocatorFromMaxId(change.maxId);
+					const repairDataCreation: { fieldKey: FieldKey; moveId: Delta.MoveId }[] = [];
+					const wrappedVisitor = Object.setPrototypeOf(visitor, {
+						onDelete: (index: number, count: number, changeId?: ChangeAtomId) => {
+							if (changeId !== undefined) {
+								for (let iNode = 0; iNode < count; iNode += 1) {
+									const fieldKey = this.repairDataIndex.getFieldKey(
+										brand(`${this.repairDataCounter++}`),
+									);
+									this.repairDataIndex.setFieldKey(changeId, fieldKey);
+									const moveId: Delta.MoveId = brand(idAllocator());
+									visitor.onMoveOut(index, 1, moveId);
+									repairDataCreation.push({ fieldKey, moveId });
+								}
+							} else {
+								visitor.onDelete(index, count);
+							}
+						},
+					});
+					visitDelta(d, wrappedVisitor);
+					for (const { fieldKey, moveId } of repairDataCreation) {
+						visitor.enterField(fieldKey);
+						visitor.onMoveIn(0, 1, moveId);
+						visitor.exitField(fieldKey);
+					}
+				};
+				void this._forest.applyDelta(delta, visit);
 				this._nodeKeyIndex.scanKeys(this.context);
 				this._events.emit("afterBatch");
 			}
@@ -411,6 +446,9 @@ export class SharedTreeView implements ISharedTreeView {
 			events,
 		);
 	}
+
+	private readonly repairDataIndex = new TreeIndex("repairData");
+	private repairDataCounter = 0;
 
 	public get events(): ISubscribable<ViewEvents> {
 		return this._events;
