@@ -400,9 +400,9 @@ export const defaultSchemaPolicy: FullSchemaPolicy;
 
 // @alpha
 interface Delete<TTree = ProtoNode> extends HasModifications<TTree> {
-    // (undocumented)
-    readonly changeId?: ChangeAtomId;
     readonly count: number;
+    // (undocumented)
+    readonly nodeId?: RemovedNodeId;
     // (undocumented)
     readonly type: typeof MarkType.Delete;
 }
@@ -432,6 +432,7 @@ declare namespace Delta {
         MoveIn,
         Insert,
         MoveId,
+        RemovedNodeId,
         FieldMap,
         FieldMarks,
         MarkType
@@ -453,7 +454,7 @@ export interface DeltaVisitor {
     // (undocumented)
     exitNode(index: number): void;
     // (undocumented)
-    onDelete(index: number, count: number, changeId?: ChangeAtomId): void;
+    onDelete(index: number, count: number, nodeId?: Delta.RemovedNodeId): void;
     // (undocumented)
     onInsert(index: number, content: Delta.ProtoNodes): void;
     // (undocumented)
@@ -1589,6 +1590,14 @@ type RecursiveTreeSchemaSpecification = unknown;
 
 // @alpha
 type _RecursiveTrick = never;
+
+// @alpha
+interface RemovedNodeId {
+    // (undocumented)
+    major?: string | number;
+    // (undocumented)
+    minor?: string | number;
+}
 
 // @alpha
 export interface RepairDataStore<TChange, TTree = Delta.ProtoNode, TRevisionTag = unknown> extends ReadonlyRepairDataStore<TTree, TRevisionTag> {

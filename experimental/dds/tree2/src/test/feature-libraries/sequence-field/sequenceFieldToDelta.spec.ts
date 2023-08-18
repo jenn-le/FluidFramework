@@ -136,6 +136,7 @@ describe("SequenceField - toDelta", () => {
 		const mark: Delta.Delete = {
 			type: Delta.MarkType.Delete,
 			count: 10,
+			nodeId: { minor: 0 },
 		};
 		const expected: Delta.MarkList = [mark];
 		const actual = toDelta(changeset);
@@ -173,6 +174,7 @@ describe("SequenceField - toDelta", () => {
 		const del: Delta.Delete = {
 			type: Delta.MarkType.Delete,
 			count: 10,
+			nodeId: { minor: 0 },
 		};
 		const ins: Delta.Insert = {
 			type: Delta.MarkType.Insert,

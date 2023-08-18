@@ -20,7 +20,6 @@ import {
 	visitDelta,
 	DeltaVisitor,
 	Delta,
-	ChangeAtomId,
 	FieldKey,
 } from "../core";
 import { HasListeners, IEmitter, ISubscribable, createEmitter } from "../events";
@@ -391,13 +390,13 @@ export class SharedTreeView implements ISharedTreeView {
 					const idAllocator = idAllocatorFromMaxId(change.maxId);
 					const repairDataCreation: { fieldKey: FieldKey; moveId: Delta.MoveId }[] = [];
 					const wrappedVisitor = Object.setPrototypeOf(visitor, {
-						onDelete: (index: number, count: number, changeId?: ChangeAtomId) => {
-							if (changeId !== undefined) {
+						onDelete: (index: number, count: number, nodeId?: Delta.RemovedNodeId) => {
+							if (nodeId !== undefined) {
 								for (let iNode = 0; iNode < count; iNode += 1) {
 									const fieldKey = this.repairDataIndex.getFieldKey(
 										brand(`${this.repairDataCounter++}`),
 									);
-									this.repairDataIndex.setFieldKey(changeId, fieldKey);
+									this.repairDataIndex.setFieldKey(nodeId, fieldKey);
 									const moveId: Delta.MoveId = brand(idAllocator());
 									visitor.onMoveOut(index, 1, moveId);
 									repairDataCreation.push({ fieldKey, moveId });

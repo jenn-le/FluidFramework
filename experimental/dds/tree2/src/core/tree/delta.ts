@@ -4,7 +4,6 @@
  */
 
 import { Brand, Opaque } from "../../util";
-import { ChangeAtomId } from "../rebase";
 import { FieldKey } from "../schema-stored";
 import { ITreeCursorSynchronous } from "./cursor";
 
@@ -212,7 +211,7 @@ export interface Delete<TTree = ProtoNode> extends HasModifications<TTree> {
 	 */
 	readonly count: number;
 	// TODO: should this be required?
-	readonly changeId?: ChangeAtomId;
+	readonly nodeId?: RemovedNodeId;
 }
 
 /**
@@ -268,6 +267,15 @@ export interface Insert<TTree = ProtoNode> extends HasModifications<TTree> {
  * @alpha
  */
 export interface MoveId extends Opaque<Brand<number, "delta.MoveId">> {}
+
+/**
+ * A globally unique ID for a node removed from the document.
+ * @alpha
+ */
+export interface RemovedNodeId {
+	major?: string | number;
+	minor?: string | number;
+}
 
 /**
  * @alpha

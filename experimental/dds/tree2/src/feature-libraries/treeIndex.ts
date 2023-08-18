@@ -3,7 +3,7 @@
  * Licensed under the MIT License.
  */
 
-import { ChangeAtomId, ChangesetLocalId, FieldKey, RevisionTag } from "../core";
+import { Delta, FieldKey } from "../core";
 import { Brand, SizedNestedMap, brand } from "../util";
 
 /**
@@ -17,8 +17,8 @@ export type RemovedTreeId = Brand<string, "tree.RemovedTreeId">;
  */
 export class TreeIndex {
 	private readonly detachedFields = new SizedNestedMap<
-		RevisionTag | undefined,
-		ChangesetLocalId,
+		string | number | undefined,
+		string | number | undefined,
 		FieldKey
 	>();
 
@@ -35,8 +35,8 @@ export class TreeIndex {
 	/**
 	 * Associates the change atom ID with the field key on this index.
 	 */
-	public setFieldKey(changeAtomId: ChangeAtomId, fieldKey: FieldKey): void {
-		const { revision, localId } = changeAtomId;
-		this.detachedFields.set(revision, localId, fieldKey);
+	public setFieldKey(changeAtomId: Delta.RemovedNodeId, fieldKey: FieldKey): void {
+		const { major, minor } = changeAtomId;
+		this.detachedFields.set(major, minor, fieldKey);
 	}
 }

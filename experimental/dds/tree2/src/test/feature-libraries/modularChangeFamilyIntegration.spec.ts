@@ -249,6 +249,11 @@ function normalizeDeltaField(
 		}
 
 		const mark: Mutable<Delta.Mark> = { ...origMark };
+
+		if (mark.type === Delta.MarkType.Delete) {
+			delete mark.nodeId;
+		}
+
 		switch (mark.type) {
 			case Delta.MarkType.MoveIn:
 			case Delta.MarkType.MoveOut: {
