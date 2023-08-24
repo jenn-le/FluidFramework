@@ -4,14 +4,7 @@
  */
 
 import { Delta, FieldKey } from "../core";
-import {
-	Brand,
-	NestedMap,
-	brand,
-	getOrDefaultInNestedMap,
-	setInNestedMap,
-	tryGetFromNestedMap,
-} from "../util";
+import { Brand, NestedMap, brand, setInNestedMap, tryGetFromNestedMap } from "../util";
 
 /**
  * ID used to create a detached field key for a removed subtree.
