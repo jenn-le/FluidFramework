@@ -265,6 +265,8 @@ export {
 	compileSyntaxTree,
 	nodeKeyFieldKey,
 	SchemaLintConfiguration,
+	TreeStatus,
+	treeStatus,
 } from "./feature-libraries";
 
 export {
@@ -277,6 +279,9 @@ export {
 	ISharedTreeBranchView,
 	ViewEvents,
 	SchematizeConfiguration,
+	TreeContent,
+	InitializeAndSchematizeConfiguration,
+	SchemaConfiguration,
 } from "./shared-tree";
 
 export type {

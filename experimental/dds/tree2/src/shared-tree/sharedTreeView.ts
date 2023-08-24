@@ -21,6 +21,7 @@ import {
 	DeltaVisitor,
 	Delta,
 	FieldKey,
+	schemaDataIsEmpty,
 } from "../core";
 import { HasListeners, IEmitter, ISubscribable, createEmitter } from "../events";
 import {
@@ -51,7 +52,11 @@ import {
 import { SharedTreeBranch } from "../shared-tree-core";
 import { TransactionResult, brand } from "../util";
 import { noopValidator } from "../codec";
-import { SchematizeConfiguration, schematizeView } from "./schematizedTree";
+import {
+	InitializeAndSchematizeConfiguration,
+	initializeContent,
+	schematize,
+} from "./schematizedTree";
 
 /**
  * Events for {@link ISharedTreeView}.
@@ -271,7 +276,9 @@ export interface ISharedTreeView extends AnchorLocator {
 	 * - Implement schema-aware API for return type.
 	 * - Support adapters for handling out of schema data.
 	 */
-	schematize<TRoot extends FieldSchema>(config: SchematizeConfiguration<TRoot>): ISharedTreeView;
+	schematize<TRoot extends FieldSchema>(
+		config: InitializeAndSchematizeConfiguration<TRoot>,
+	): ISharedTreeView;
 }
 
 /**
@@ -506,7 +513,7 @@ export class SharedTreeView implements ISharedTreeBranchView {
 	}
 
 	public schematize<TRoot extends FieldSchema>(
-		config: SchematizeConfiguration<TRoot>,
+		config: InitializeAndSchematizeConfiguration<TRoot>,
 	): ISharedTreeView {
 		return schematizeView(this, config);
 	}
@@ -584,6 +591,29 @@ export class SharedTreeView implements ISharedTreeBranchView {
 	public dispose(): void {
 		this.branch.dispose();
 	}
+}
+
+export function schematizeView<TRoot extends FieldSchema>(
+	view: ISharedTreeView,
+	config: InitializeAndSchematizeConfiguration<TRoot>,
+): ISharedTreeView {
+	// TODO:
+	// When this becomes a more proper out of schema adapter, editing should be made lazy.
+	// This will improve support for readonly documents, cross version collaboration and attribution.
+
+	// Check for empty.
+	// TODO: Better detection of empty case
+	if (view.forest.isEmpty && schemaDataIsEmpty(view.storedSchema)) {
+		view.transaction.start();
+		initializeContent(view.storedSchema, config.schema, () =>
+			view.setContent(config.initialTree),
+		);
+		view.transaction.commit();
+	}
+
+	schematize(view.events, view.storedSchema, config);
+
+	return view;
 }
 
 /**
