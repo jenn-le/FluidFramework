@@ -46,8 +46,6 @@ export {
 	ITreeSubscriptionCursor,
 	ITreeSubscriptionCursorState,
 	TreeSchemaIdentifier,
-	NamedTreeSchema,
-	Named,
 	FieldStoredSchema,
 	ValueSchema,
 	TreeStoredSchema,
@@ -100,6 +98,7 @@ export {
 	BrandedKey,
 	BrandedMapSubset,
 	RangeEntry,
+	Named,
 } from "./util";
 
 export {
@@ -127,8 +126,9 @@ export {
 } from "./domains";
 
 export {
-	buildForest,
 	IdAllocator,
+	MemoizedIdRangeAllocator,
+	IdRange,
 	ModularChangeset,
 	EditDescription,
 	FieldChangeHandler,
@@ -198,10 +198,7 @@ export {
 	SchemaAware,
 	ArrayLikeMut,
 	FieldKinds,
-	SchemaCollection,
 	ContextuallyTypedFieldData,
-	ITreeSchema,
-	IFieldSchema,
 	cursorFromContextualData,
 	UntypedField,
 	UntypedTree,
@@ -225,7 +222,6 @@ export {
 	SchemaLibraryData,
 	FieldSchema,
 	Any,
-	Sourced,
 	NewFieldContent,
 	NodeExistsConstraint,
 	cursorForTypedTreeData,
@@ -268,15 +264,17 @@ export {
 	comparePipeline,
 	compileSyntaxTree,
 	nodeKeyFieldKey,
+	SchemaLintConfiguration,
 } from "./feature-libraries";
 
 export {
 	ISharedTree,
 	ISharedTreeView,
+	ITransaction,
 	runSynchronous,
 	SharedTreeFactory,
 	SharedTreeOptions,
-	SharedTreeView,
+	ISharedTreeBranchView,
 	ViewEvents,
 	SchematizeConfiguration,
 } from "./shared-tree";
