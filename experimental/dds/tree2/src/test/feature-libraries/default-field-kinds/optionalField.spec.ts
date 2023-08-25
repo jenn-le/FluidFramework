@@ -374,7 +374,7 @@ describe("optionalField", () => {
 
 		it("can be converted to a delta when restoring content", () => {
 			const expected: Delta.MarkList = [
-				{ type: Delta.MarkType.Delete, count: 1, nodeId: { major: tag, minor: 0 } },
+				{ type: Delta.MarkType.Delete, count: 1, removedNodes: { major: tag, minor: 0 } },
 				{ type: Delta.MarkType.Insert, content: [testTreeCursor("tree1")] },
 			];
 

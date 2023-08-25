@@ -108,7 +108,13 @@ export type DeltaVisit = (delta: Delta.Root, visitor: DeltaVisitor) => void;
  * @alpha
  */
 export interface DeltaVisitor {
-	onDelete(index: number, count: number, nodeId?: Delta.RemovedNodeId): void;
+	/**
+	 * Forks the current visitor.
+	 * Any fork produced this way is freed before the visit terminates.
+	 */
+	fork(): DeltaVisitor;
+	free(): void;
+	onDelete(index: number, count: number): void;
 	onInsert(index: number, content: Delta.ProtoNodes): void;
 	onMoveOut(index: number, count: number, id: Delta.MoveId): void;
 	onMoveIn(index: number, count: number, id: Delta.MoveId): void;
@@ -120,6 +126,25 @@ export interface DeltaVisitor {
 	exitNode(index: number): void;
 	enterField(key: FieldKey): void;
 	exitField(key: FieldKey): void;
+	/**
+	 * Optional set of methods that supported in order to visit changes to removed content.
+	 * If not provided:
+	 * - `onRemove` calls are redirected to `onDelete`
+	 * - all other calls are ignored
+	 */
+	readonly removedContent?: RemovedContentDeltaVisitor;
+}
+
+/**
+ * An object that can be walked through a Delta for removed content.
+ * @alpha
+ */
+export interface RemovedContentDeltaVisitor {
+	enterNode(nodeId: Delta.RemovedNodeId): void;
+	exitNode(nodeId: Delta.RemovedNodeId): void;
+	onRemove(index: number, count: number, nodeId: Delta.RemovedNodeId): void;
+	onRestore(index: number, count: number, nodeId: Delta.RemovedNodeId): void;
+	onMoveOut(nodeId: Delta.RemovedNodeId, count: number, id: Delta.MoveId): void;
 }
 
 interface PassConfig {
@@ -152,16 +177,25 @@ function visitModify(
 	modify: Delta.HasModifications,
 	visitor: DeltaVisitor,
 	config: PassConfig,
+	removedNodes?: Delta.RemovedNodeId,
 ): boolean {
 	let containsMovesOrDeletes = false;
 
 	if (modify.fields !== undefined) {
-		visitor.enterNode(index);
+		if (removedNodes !== undefined && visitor.removedContent !== undefined) {
+			visitor.removedContent.enterNode(removedNodes);
+		} else {
+			visitor.enterNode(index);
+		}
 		if (modify.fields !== undefined) {
 			const result = visitFieldMarks(modify.fields, visitor, config);
 			containsMovesOrDeletes ||= result;
 		}
-		visitor.exitNode(index);
+		if (removedNodes !== undefined && visitor.removedContent !== undefined) {
+			visitor.removedContent.exitNode(removedNodes);
+		} else {
+			visitor.exitNode(index);
+		}
 	}
 	return containsMovesOrDeletes;
 }
@@ -181,15 +215,33 @@ function firstPass(delta: Delta.MarkList, visitor: DeltaVisitor, config: PassCon
 				case Delta.MarkType.Delete:
 					// Handled in the second pass
 					visitModify(index, mark, visitor, config);
-					index += mark.count;
 					markHasMoveOrDelete = true;
+					if (mark.removedNodes !== undefined && visitor.removedContent !== undefined) {
+						visitor.removedContent.onRemove(index, mark.count, mark.removedNodes);
+					} else {
+						index += mark.count;
+					}
 					break;
 				case Delta.MarkType.MoveOut:
-					markHasMoveOrDelete = visitModify(index, mark, visitor, config);
+					markHasMoveOrDelete = visitModify(
+						index,
+						mark,
+						visitor,
+						config,
+						mark.removedNodes,
+					);
 					if (markHasMoveOrDelete) {
 						config.modsToMovedTrees.set(mark.moveId, mark);
 					}
-					visitor.onMoveOut(index, mark.count, mark.moveId);
+					if (mark.removedNodes !== undefined && visitor.removedContent !== undefined) {
+						visitor.removedContent.onMoveOut(
+							mark.removedNodes,
+							mark.count,
+							mark.moveId,
+						);
+					} else {
+						visitor.onMoveOut(index, mark.count, mark.moveId);
+					}
 					setInRangeMap(
 						config.movedOutRanges,
 						extractFromOpaque(mark.moveId),
@@ -198,11 +250,30 @@ function firstPass(delta: Delta.MarkList, visitor: DeltaVisitor, config: PassCon
 					);
 					break;
 				case Delta.MarkType.Modify:
-					markHasMoveOrDelete = visitModify(index, mark, visitor, config);
+					markHasMoveOrDelete = visitModify(
+						index,
+						mark,
+						visitor,
+						config,
+						mark.removedNode,
+					);
 					index += 1;
 					break;
 				case Delta.MarkType.Insert:
-					visitor.onInsert(index, mark.content);
+					if (mark.removedNodes !== undefined) {
+						if (visitor.removedContent !== undefined) {
+							visitor.removedContent.onRestore(
+								index,
+								mark.content.length,
+								mark.removedNodes,
+							);
+						} else {
+							// The nodes were never removed because the visitor does not support removal.
+							// Nothing needs to done to ensure the nodes a present.
+						}
+					} else {
+						visitor.onInsert(index, mark.content);
+					}
 					markHasMoveOrDelete =
 						visitModify(index, mark, visitor, config) || (mark.isTransient ?? false);
 					index += mark.content.length;

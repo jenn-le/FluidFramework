@@ -4,7 +4,7 @@
  */
 
 import { Delta, FieldKey } from "../core";
-import { Brand, NestedMap, brand, setInNestedMap, tryGetFromNestedMap } from "../util";
+import { Brand, NestedMap, brand, fail, setInNestedMap, tryGetFromNestedMap } from "../util";
 
 /**
  * ID used to create a detached field key for a removed subtree.
@@ -41,6 +41,15 @@ export class TreeIndex {
 	 */
 	public tryGetFieldKey(id: Delta.RemovedNodeId): FieldKey | undefined {
 		return tryGetFromNestedMap(this.detachedFields, id.major, id.minor);
+	}
+
+	/**
+	 * Returns the FieldKey associated with the given id.
+	 * Fails if no such id is known to the index.
+	 */
+	public getFieldKey(id: Delta.RemovedNodeId): FieldKey {
+		const key = tryGetFromNestedMap(this.detachedFields, id.major, id.minor);
+		return key ?? fail("Unknown removed node ID");
 	}
 
 	/**

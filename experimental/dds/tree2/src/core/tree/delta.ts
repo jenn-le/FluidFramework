@@ -196,6 +196,7 @@ export interface HasModifications<TTree = ProtoNode> {
  */
 export interface Modify<TTree = ProtoNode> extends HasModifications<TTree> {
 	readonly type: typeof MarkType.Modify;
+	readonly removedNode?: RemovedNodeId;
 }
 
 /**
@@ -211,7 +212,7 @@ export interface Delete<TTree = ProtoNode> extends HasModifications<TTree> {
 	 */
 	readonly count: number;
 	// TODO: should this be required?
-	readonly nodeId?: RemovedNodeId;
+	readonly removedNodes?: RemovedNodeId;
 }
 
 /**
@@ -228,6 +229,8 @@ export interface MoveOut<TTree = ProtoNode> extends HasModifications<TTree> {
 	 * The delta should carry exactly one `MoveIn` mark with the same move ID.
 	 */
 	readonly moveId: MoveId;
+
+	readonly removedNodes?: RemovedNodeId;
 }
 
 /**
@@ -252,6 +255,8 @@ export interface Insert<TTree = ProtoNode> extends HasModifications<TTree> {
 	// TODO: use a single cursor with multiple nodes instead of array of cursors.
 	/**
 	 * Must be of length 1 when `fields` is populated.
+	 * Not providing the content means that it is repair data and should be looked up using the nodeId.
+	 * If both the nodeId and the content are undefined, this will result in an error when applying the delta.
 	 */
 	readonly content: readonly TTree[];
 
@@ -260,6 +265,8 @@ export interface Insert<TTree = ProtoNode> extends HasModifications<TTree> {
 	 * This is used in scenarios where content is moved out from under an inserted subtree that is then deleted.
 	 */
 	readonly isTransient?: true;
+
+	readonly removedNodes?: RemovedNodeId;
 }
 
 /**
@@ -274,7 +281,7 @@ export interface MoveId extends Opaque<Brand<number, "delta.MoveId">> {}
  */
 export interface RemovedNodeId {
 	major?: string | number;
-	minor?: string | number;
+	minor: number;
 }
 
 /**

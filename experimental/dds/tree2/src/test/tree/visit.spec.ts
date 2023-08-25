@@ -44,7 +44,7 @@ function testVisit(delta: Delta.Root, expected: Readonly<VisitScript>): void {
 			// assert.deepStrictEqual([name, ...args], expected[callIndex]);
 			callIndex += 1;
 		};
-	const visitor: DeltaVisitor = {} as any;
+	const visitor = {} as any;
 	for (const methodName of visitorMethods) {
 		visitor[methodName] = makeChecker(methodName);
 	}

@@ -5,7 +5,7 @@
 
 import { assert, unreachableCase } from "@fluidframework/common-utils";
 import { brandOpaque, fail, Mutable, OffsetListFactory } from "../../util";
-import { Delta, RevisionTag, TaggedChange } from "../../core";
+import { Delta, ITreeCursorSynchronous, RevisionTag, TaggedChange } from "../../core";
 import { MemoizedIdRangeAllocator } from "../memoizedIdRangeAllocator";
 import { singleTextCursor } from "../treeTextCursor";
 import { Mark, MarkList, NoopMarkType } from "./format";
@@ -88,8 +88,8 @@ function cellDeltaFromMark<TNodeChange>(
 					{
 						type: Delta.MarkType.Delete,
 						count: mark.count,
-						nodeId: {
-							major: mark.revision !== undefined ? mark.revision : revision,
+						removedNodes: {
+							major: mark.revision ?? revision,
 							minor: mark.id,
 						},
 					},
@@ -105,9 +105,17 @@ function cellDeltaFromMark<TNodeChange>(
 				}));
 			}
 			case "Revive": {
+				const content: ITreeCursorSynchronous[] = [];
+				content.length = mark.count;
+				const cellId = mark.cellId;
+				assert(cellId !== undefined, "Effective revive must target an empty cell");
 				const insertMark: Mutable<Delta.Insert> = {
 					type: Delta.MarkType.Insert,
-					content: mark.content,
+					content,
+					removedNodes: {
+						major: cellId.revision ?? revision,
+						minor: cellId.localId,
+					},
 				};
 				if (mark.transientDetach !== undefined) {
 					insertMark.isTransient = true;

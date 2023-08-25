@@ -129,7 +129,17 @@ class ObjectForest extends SimpleDependee implements IEditableForest {
 
 			return children.length;
 		};
+		const cursors: ITreeSubscriptionCursor[] = [cursor];
 		const visitor = {
+			cursor,
+			fork() {
+				const newCursor = this.cursor.fork();
+				cursors.push(newCursor);
+				return { ...visitor, cursor: newCursor };
+			},
+			free() {
+				this.cursor.free();
+			},
 			onDelete: (index: number, count: number): void => {
 				visitor.onMoveOut(index, count);
 			},

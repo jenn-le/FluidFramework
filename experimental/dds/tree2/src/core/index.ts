@@ -58,6 +58,7 @@ export {
 	DeltaVisit,
 	setGenericTreeField,
 	DeltaVisitor,
+	RemovedContentDeltaVisitor,
 	PathVisitor,
 	SparseNode,
 	getDescendant,

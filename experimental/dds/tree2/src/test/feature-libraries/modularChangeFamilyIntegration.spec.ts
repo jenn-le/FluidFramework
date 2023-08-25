@@ -311,7 +311,7 @@ function normalizeDeltaField(
 		const mark: Mutable<Delta.Mark> = { ...origMark };
 
 		if (mark.type === Delta.MarkType.Delete) {
-			delete mark.nodeId;
+			delete mark.removedNodes;
 		}
 
 		switch (mark.type) {

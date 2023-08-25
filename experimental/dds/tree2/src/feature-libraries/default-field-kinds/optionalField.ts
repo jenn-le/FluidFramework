@@ -337,7 +337,7 @@ function deltaForDelete(
 	const deleteDelta: Mutable<Delta.Delete> = {
 		type: Delta.MarkType.Delete,
 		count: 1,
-		nodeId,
+		removedNodes: nodeId,
 	};
 	if (nodeChange !== undefined) {
 		const modify = deltaFromNode(nodeChange);

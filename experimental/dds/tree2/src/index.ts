@@ -79,6 +79,7 @@ export {
 	DeltaVisit,
 	ChangeAtomId,
 	DeltaVisitor,
+	RemovedContentDeltaVisitor,
 } from "./core";
 
 export {

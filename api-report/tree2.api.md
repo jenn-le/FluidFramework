@@ -399,7 +399,7 @@ export const defaultSchemaPolicy: FullSchemaPolicy;
 interface Delete<TTree = ProtoNode> extends HasModifications<TTree> {
     readonly count: number;
     // (undocumented)
-    readonly nodeId?: RemovedNodeId;
+    readonly removedNodes?: RemovedNodeId;
     // (undocumented)
     readonly type: typeof MarkType.Delete;
 }
@@ -450,14 +450,18 @@ export interface DeltaVisitor {
     exitField(key: FieldKey): void;
     // (undocumented)
     exitNode(index: number): void;
+    fork(): DeltaVisitor;
     // (undocumented)
-    onDelete(index: number, count: number, nodeId?: Delta.RemovedNodeId): void;
+    free(): void;
+    // (undocumented)
+    onDelete(index: number, count: number): void;
     // (undocumented)
     onInsert(index: number, content: Delta.ProtoNodes): void;
     // (undocumented)
     onMoveIn(index: number, count: number, id: Delta.MoveId): void;
     // (undocumented)
     onMoveOut(index: number, count: number, id: Delta.MoveId): void;
+    readonly removedContent?: RemovedContentDeltaVisitor;
 }
 
 // @alpha
@@ -931,6 +935,7 @@ type _InlineTrick = 0;
 interface Insert<TTree = ProtoNode> extends HasModifications<TTree> {
     readonly content: readonly TTree[];
     readonly isTransient?: true;
+    readonly removedNodes?: RemovedNodeId;
     // (undocumented)
     readonly type: typeof MarkType.Insert;
 }
@@ -1340,6 +1345,8 @@ export const MemoizedIdRangeAllocator: {
 // @alpha
 interface Modify<TTree = ProtoNode> extends HasModifications<TTree> {
     // (undocumented)
+    readonly removedNode?: RemovedNodeId;
+    // (undocumented)
     readonly type: typeof MarkType.Modify;
 }
 
@@ -1370,6 +1377,8 @@ interface MoveIn {
 interface MoveOut<TTree = ProtoNode> extends HasModifications<TTree> {
     readonly count: number;
     readonly moveId: MoveId;
+    // (undocumented)
+    readonly removedNodes?: RemovedNodeId;
     // (undocumented)
     readonly type: typeof MarkType.MoveOut;
 }
@@ -1600,11 +1609,25 @@ type RecursiveTreeSchemaSpecification = unknown;
 type _RecursiveTrick = never;
 
 // @alpha
+export interface RemovedContentDeltaVisitor {
+    // (undocumented)
+    enterNode(nodeId: Delta.RemovedNodeId): void;
+    // (undocumented)
+    exitNode(nodeId: Delta.RemovedNodeId): void;
+    // (undocumented)
+    onMoveOut(nodeId: Delta.RemovedNodeId, count: number, id: Delta.MoveId): void;
+    // (undocumented)
+    onRemove(index: number, count: number, nodeId: Delta.RemovedNodeId): void;
+    // (undocumented)
+    onRestore(index: number, count: number, nodeId: Delta.RemovedNodeId): void;
+}
+
+// @alpha
 interface RemovedNodeId {
     // (undocumented)
     major?: string | number;
     // (undocumented)
-    minor?: string | number;
+    minor: number;
 }
 
 // @alpha
