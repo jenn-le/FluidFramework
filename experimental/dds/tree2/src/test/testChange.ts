@@ -182,7 +182,7 @@ function checkChangeList(
 	assert.deepEqual(intentionsSeen, intentions);
 }
 
-function toDelta(change: TestChange): Delta.Modify {
+function toDelta({ change, revision }: TaggedChange<TestChange>): Delta.Modify {
 	if (change.intentions.length > 0) {
 		return {
 			type: Delta.MarkType.Modify,
@@ -190,7 +190,11 @@ function toDelta(change: TestChange): Delta.Modify {
 				[
 					brand("foo"),
 					[
-						{ type: Delta.MarkType.Delete, count: 1 },
+						{
+							type: Delta.MarkType.Delete,
+							count: 1,
+							nodeId: { major: revision, minor: 0 },
+						},
 						{
 							type: Delta.MarkType.Insert,
 							content: [

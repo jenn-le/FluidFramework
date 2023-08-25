@@ -84,18 +84,14 @@ function cellDeltaFromMark<TNodeChange>(
 				return [mark.count];
 			}
 			case "Delete": {
-				const nodeId: Mutable<Delta.RemovedNodeId> = {
-					minor: mark.id,
-				};
-				if (mark.revision !== undefined) {
-					// TODO: Use the revision tag from the changeset if there is none on the field change
-					nodeId.major = mark.revision;
-				}
 				return [
 					{
 						type: Delta.MarkType.Delete,
 						count: mark.count,
-						nodeId,
+						nodeId: {
+							major: mark.revision !== undefined ? mark.revision : revision,
+							minor: mark.id,
+						},
 					},
 				];
 			}

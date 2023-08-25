@@ -13,7 +13,14 @@ import {
 	RevisionMetadataSource,
 	MemoizedIdRangeAllocator,
 } from "../../../feature-libraries";
-import { makeAnonChange, tagChange, TaggedChange, Delta, FieldKey } from "../../../core";
+import {
+	makeAnonChange,
+	tagChange,
+	TaggedChange,
+	Delta,
+	FieldKey,
+	mintRevisionTag,
+} from "../../../core";
 import { brand } from "../../../util";
 import {
 	EncodingTestData,
@@ -33,6 +40,8 @@ const valueChange1To0: ValueChangeset = { old: 1, new: 0 };
 const valueChange1To2: ValueChangeset = { old: 1, new: 2 };
 const valueChange2To1: ValueChangeset = { old: 2, new: 1 };
 const valueChange0To2: ValueChangeset = { old: 0, new: 2 };
+
+const tag = mintRevisionTag();
 
 function nodeChangeFromValueChange(valueChange: ValueChangeset): NodeChangeset {
 	return {
@@ -119,8 +128,8 @@ const childRebaser = (
 	return nodeChangeFromValueChange(rebased);
 };
 
-const childToDelta = (nodeChange: NodeChangeset): Delta.Modify => {
-	const valueChange = valueChangeFromNodeChange(nodeChange);
+const childToDelta = ({ change, revision }: TaggedChange<NodeChangeset>): Delta.Modify => {
+	const valueChange = valueChangeFromNodeChange(change);
 	assert(typeof valueChange !== "number");
 	const nodeDelta: Delta.Modify = {
 		type: Delta.MarkType.Modify,
@@ -128,7 +137,11 @@ const childToDelta = (nodeChange: NodeChangeset): Delta.Modify => {
 			[
 				valueFieldKey,
 				[
-					{ type: Delta.MarkType.Delete, count: 1 },
+					{
+						type: Delta.MarkType.Delete,
+						count: 1,
+						nodeId: { major: revision, minor: 0 },
+					},
 					{ type: Delta.MarkType.Insert, content: [singleJsonCursor(valueChange.new)] },
 				],
 			],
@@ -381,7 +394,7 @@ describe("Generic FieldKind", () => {
 				[
 					valueFieldKey,
 					[
-						{ type: Delta.MarkType.Delete, count: 1 },
+						{ type: Delta.MarkType.Delete, count: 1, nodeId: { major: tag, minor: 0 } },
 						{ type: Delta.MarkType.Insert, content: [singleJsonCursor(1)] },
 					],
 				],
@@ -394,7 +407,7 @@ describe("Generic FieldKind", () => {
 				[
 					valueFieldKey,
 					[
-						{ type: Delta.MarkType.Delete, count: 1 },
+						{ type: Delta.MarkType.Delete, count: 1, nodeId: { major: tag, minor: 0 } },
 						{ type: Delta.MarkType.Insert, content: [singleJsonCursor(2)] },
 					],
 				],
@@ -404,8 +417,8 @@ describe("Generic FieldKind", () => {
 		const expected: Delta.MarkList = [valueDelta1, 1, valueDelta2];
 
 		const actual = genericFieldKind.changeHandler.intoDelta(
-			makeAnonChange(input),
-			childToDelta,
+			tagChange(input, tag),
+			(change) => childToDelta(tagChange(change, tag)),
 			MemoizedIdRangeAllocator.fromNextId(),
 		);
 		assert.deepEqual(actual, expected);

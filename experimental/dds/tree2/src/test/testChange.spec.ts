@@ -59,7 +59,7 @@ describe("TestChange", () => {
 
 	it("can be represented as a delta", () => {
 		const change1 = TestChange.mint([0, 1], [2, 3]);
-		const delta = TestChange.toDelta(change1);
+		const delta = TestChange.toDelta(makeAnonChange(change1));
 		const fooField: FieldKey = brand("foo");
 		const expected = {
 			type: Delta.MarkType.Modify,
@@ -83,7 +83,7 @@ describe("TestChange", () => {
 		};
 
 		assert.deepEqual(delta, expected);
-		assert.deepEqual(TestChange.toDelta(TestChange.mint([0, 1], [])), {
+		assert.deepEqual(TestChange.toDelta(makeAnonChange(TestChange.mint([0, 1], []))), {
 			type: Delta.MarkType.Modify,
 		});
 	});

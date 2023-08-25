@@ -53,15 +53,19 @@ const failCrossFieldManager: CrossFieldManager = {
 	set: () => assert.fail("Should modify CrossFieldManager"),
 };
 
-const deltaFromChild1 = (child: NodeChangeset): Delta.Modify => {
-	assert.deepEqual(child, nodeChange1);
+const deltaFromChild1 = ({ change, revision }: TaggedChange<NodeChangeset>): Delta.Modify => {
+	assert.deepEqual(change, nodeChange1);
 	return {
 		type: Delta.MarkType.Modify,
 		fields: new Map([
 			[
 				fooKey,
 				[
-					{ type: Delta.MarkType.Delete, count: 1 },
+					{
+						type: Delta.MarkType.Delete,
+						count: 1,
+						nodeId: { major: revision, minor: 0 },
+					},
 					{
 						type: Delta.MarkType.Insert,
 						content: [testTreeCursor("nodeChange1")],
@@ -72,15 +76,19 @@ const deltaFromChild1 = (child: NodeChangeset): Delta.Modify => {
 	};
 };
 
-const deltaFromChild2 = (child: NodeChangeset): Delta.Modify => {
-	assert.deepEqual(child, nodeChange2);
+const deltaFromChild2 = ({ change, revision }: TaggedChange<NodeChangeset>): Delta.Modify => {
+	assert.deepEqual(change, nodeChange2);
 	return {
 		type: Delta.MarkType.Modify,
 		fields: new Map([
 			[
 				fooKey,
 				[
-					{ type: Delta.MarkType.Delete, count: 1 },
+					{
+						type: Delta.MarkType.Delete,
+						count: 1,
+						nodeId: { major: revision, minor: 0 },
+					},
 					{
 						type: Delta.MarkType.Insert,
 						content: [testTreeCursor("nodeChange2")],
@@ -91,6 +99,7 @@ const deltaFromChild2 = (child: NodeChangeset): Delta.Modify => {
 	};
 };
 
+const tag = mintRevisionTag();
 const change1: TaggedChange<OptionalChangeset> = tagChange(
 	{
 		fieldChange: {
@@ -99,7 +108,7 @@ const change1: TaggedChange<OptionalChangeset> = tagChange(
 			wasEmpty: true,
 		},
 	},
-	mintRevisionTag(),
+	tag,
 );
 
 const change2: TaggedChange<OptionalChangeset> = tagChange(
@@ -107,16 +116,19 @@ const change2: TaggedChange<OptionalChangeset> = tagChange(
 	mintRevisionTag(),
 );
 
-const revertChange2: OptionalChangeset = {
-	fieldChange: {
-		id: brand(2),
-		newContent: {
-			revert: testTreeCursor("tree1"),
-			changeId: { revision: mintRevisionTag(), localId: brand(2) },
+const revertChange2: TaggedChange<OptionalChangeset> = tagChange(
+	{
+		fieldChange: {
+			id: brand(2),
+			newContent: {
+				revert: testTreeCursor("tree1"),
+				changeId: { revision: mintRevisionTag(), localId: brand(2) },
+			},
+			wasEmpty: false,
 		},
-		wasEmpty: false,
 	},
-};
+	mintRevisionTag(),
+);
 
 /**
  * Represents what change2 would have been had it been concurrent with change1.
@@ -128,7 +140,7 @@ const change2PreChange1: TaggedChange<OptionalChangeset> = tagChange(
 
 const change4: TaggedChange<OptionalChangeset> = tagChange(
 	optionalFieldEditor.buildChildChange(0, nodeChange2),
-	mintRevisionTag(),
+	tag,
 );
 
 // TODO: unit test standalone functions from optionalField.ts
@@ -337,7 +349,11 @@ describe("optionalField", () => {
 						[
 							fooKey,
 							[
-								{ type: Delta.MarkType.Delete, count: 1 },
+								{
+									type: Delta.MarkType.Delete,
+									count: 1,
+									nodeId: { major: tag, minor: 0 },
+								},
 								{
 									type: Delta.MarkType.Insert,
 									content: [testTreeCursor("nodeChange1")],
@@ -348,16 +364,23 @@ describe("optionalField", () => {
 				},
 			];
 
-			assertMarkListEqual(optionalFieldIntoDelta(change1.change, deltaFromChild1), expected);
+			assertMarkListEqual(
+				optionalFieldIntoDelta(change1, (change) =>
+					deltaFromChild1(tagChange(change, tag)),
+				),
+				expected,
+			);
 		});
 
 		it("can be converted to a delta when restoring content", () => {
 			const expected: Delta.MarkList = [
-				{ type: Delta.MarkType.Delete, count: 1 },
+				{ type: Delta.MarkType.Delete, count: 1, nodeId: { major: tag, minor: 0 } },
 				{ type: Delta.MarkType.Insert, content: [testTreeCursor("tree1")] },
 			];
 
-			const actual = optionalFieldIntoDelta(revertChange2, deltaFromChild1);
+			const actual = optionalFieldIntoDelta(revertChange2, (change) =>
+				deltaFromChild1(tagChange(change, tag)),
+			);
 			assertMarkListEqual(actual, expected);
 		});
 
@@ -369,7 +392,11 @@ describe("optionalField", () => {
 						[
 							fooKey,
 							[
-								{ type: Delta.MarkType.Delete, count: 1 },
+								{
+									type: Delta.MarkType.Delete,
+									count: 1,
+									nodeId: { major: tag, minor: 0 },
+								},
 								{
 									type: Delta.MarkType.Insert,
 									content: [testTreeCursor("nodeChange2")],
@@ -380,7 +407,12 @@ describe("optionalField", () => {
 				},
 			];
 
-			assertMarkListEqual(optionalFieldIntoDelta(change4.change, deltaFromChild2), expected);
+			assertMarkListEqual(
+				optionalFieldIntoDelta(change4, (change) =>
+					deltaFromChild2(tagChange(change, tag)),
+				),
+				expected,
+			);
 		});
 	});
 });

@@ -346,7 +346,10 @@ function deltaForDelete(
 	return [deleteDelta];
 }
 
-export function optionalFieldIntoDelta(change: OptionalChangeset, deltaFromChild: ToDelta) {
+export function optionalFieldIntoDelta(
+	{ change, revision }: TaggedChange<OptionalChangeset>,
+	deltaFromChild: ToDelta,
+) {
 	if (change.fieldChange === undefined) {
 		if (change.deletedBy === undefined && change.childChange !== undefined) {
 			return [deltaFromChild(change.childChange)];
@@ -354,18 +357,15 @@ export function optionalFieldIntoDelta(change: OptionalChangeset, deltaFromChild
 		return [];
 	}
 
-	const nodeId: Mutable<Delta.RemovedNodeId> = {
-		minor: change.fieldChange.id,
-	};
-	if (change.fieldChange.revision !== undefined) {
-		// TODO: Use the revision tag from the changeset if there is none on the field change
-		nodeId.major = change.fieldChange.revision;
-	}
 	const deleteDelta = deltaForDelete(
 		!change.fieldChange.wasEmpty,
 		change.deletedBy === undefined ? change.childChange : undefined,
 		deltaFromChild,
-		nodeId,
+		{
+			major:
+				change.fieldChange.revision !== undefined ? change.fieldChange.revision : revision,
+			minor: change.fieldChange.id,
+		},
 	);
 
 	const update = change.fieldChange?.newContent;
@@ -388,7 +388,7 @@ export const optionalChangeHandler: FieldChangeHandler<OptionalChangeset, Option
 	codecsFactory: makeOptionalFieldCodecFamily,
 	editor: optionalFieldEditor,
 
-	intoDelta: ({ change }: TaggedChange<OptionalChangeset>, deltaFromChild: ToDelta) =>
+	intoDelta: (change: TaggedChange<OptionalChangeset>, deltaFromChild: ToDelta) =>
 		optionalFieldIntoDelta(change, deltaFromChild),
 	isEmpty: (change: OptionalChangeset) =>
 		change.childChange === undefined && change.fieldChange === undefined,

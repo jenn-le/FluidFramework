@@ -13,6 +13,8 @@ import {
 	mintRevisionTag,
 	ChangesetLocalId,
 	makeAnonChange,
+	tagChange,
+	TaggedChange,
 } from "../../../core";
 import {
 	FieldChange,
@@ -46,26 +48,27 @@ function fakeRepairData(_revision: RevisionTag, _index: number, count: number): 
 	return makeArray(count, () => singleTextCursor({ type: DUMMY_REVIVED_NODE_TYPE }));
 }
 
-function toDelta(change: TestChangeset): Delta.MarkList {
+function toDelta(change: TestChangeset, revision = mintRevisionTag()): Delta.MarkList {
 	deepFreeze(change);
 	return SF.sequenceFieldToDelta(
-		makeAnonChange(change),
-		TestChange.toDelta,
+		tagChange(change, revision),
+		(childChange) => TestChange.toDelta(tagChange(childChange, revision)),
 		MemoizedIdRangeAllocator.fromNextId(),
 	);
 }
 
-function toDeltaShallow(change: TestChangeset): Delta.MarkList {
+function toDeltaShallow(change: TestChangeset, revision = mintRevisionTag()): Delta.MarkList {
 	deepFreeze(change);
 	return SF.sequenceFieldToDelta(
-		makeAnonChange(change),
+		tagChange(change, revision),
 		() => fail("Unexpected call to child ToDelta"),
 		MemoizedIdRangeAllocator.fromNextId(),
 	);
 }
 
 const childChange1 = TestChange.mint([0], 1);
-const childChange1Delta = TestChange.toDelta(childChange1);
+const childChange1Delta = (revision: RevisionTag) =>
+	TestChange.toDelta(tagChange(childChange1, revision));
 
 describe("SequenceField - toDelta", () => {
 	it("empty mark list", () => {
@@ -74,8 +77,8 @@ describe("SequenceField - toDelta", () => {
 	});
 
 	it("child change", () => {
-		const actual = toDelta(Change.modify(0, childChange1));
-		const expected: Delta.MarkList = [childChange1Delta];
+		const actual = toDelta(Change.modify(0, childChange1), tag);
+		const expected: Delta.MarkList = [childChange1Delta(tag)];
 		assert.deepEqual(actual, expected);
 	});
 
@@ -126,13 +129,13 @@ describe("SequenceField - toDelta", () => {
 			Mark.revive(contentCursor, { revision: tag, localId: brand(0) }, { changes }),
 		];
 		const fieldChanges = new Map([[fooField, [{ type: Delta.MarkType.Insert, content: [] }]]]);
-		const deltaFromChild = (child: NodeChangeset): Delta.Modify => {
-			assert.deepEqual(child, changes);
+		const deltaFromChild = ({ change }: TaggedChange<NodeChangeset>): Delta.Modify => {
+			assert.deepEqual(change, changes);
 			return { type: Delta.MarkType.Modify, fields: fieldChanges };
 		};
 		const actual = SF.sequenceFieldToDelta(
 			makeAnonChange(changeset),
-			deltaFromChild,
+			(change) => deltaFromChild(makeAnonChange(change)),
 			MemoizedIdRangeAllocator.fromNextId(),
 		);
 		const expected: Delta.MarkList = [
@@ -150,10 +153,10 @@ describe("SequenceField - toDelta", () => {
 		const mark: Delta.Delete = {
 			type: Delta.MarkType.Delete,
 			count: 10,
-			nodeId: { minor: 0 },
+			nodeId: { major: tag, minor: 0 },
 		};
 		const expected: Delta.MarkList = [mark];
-		const actual = toDelta(changeset);
+		const actual = toDelta(changeset, tag);
 		assert.deepStrictEqual(actual, expected);
 	});
 
@@ -232,7 +235,7 @@ describe("SequenceField - toDelta", () => {
 		const del: Delta.Delete = {
 			type: Delta.MarkType.Delete,
 			count: 10,
-			nodeId: { minor: 0 },
+			nodeId: { major: tag, minor: 0 },
 		};
 		const ins: Delta.Insert = {
 			type: Delta.MarkType.Insert,
@@ -244,7 +247,11 @@ describe("SequenceField - toDelta", () => {
 				[
 					brand("foo"),
 					[
-						{ type: Delta.MarkType.Delete, count: 1 },
+						{
+							type: Delta.MarkType.Delete,
+							count: 1,
+							nodeId: { major: tag, minor: 0 },
+						},
 						{
 							type: Delta.MarkType.Insert,
 							content: [
@@ -259,7 +266,7 @@ describe("SequenceField - toDelta", () => {
 			]),
 		};
 		const expected: Delta.MarkList = [del, 3, ins, 1, modify];
-		const actual = toDelta(changeset);
+		const actual = toDelta(changeset, tag);
 		assert.deepStrictEqual(actual, expected);
 	});
 
@@ -371,13 +378,13 @@ describe("SequenceField - toDelta", () => {
 			fields: nestedMoveDelta,
 		};
 		const expected: Delta.MarkList = [mark];
-		const deltaFromChild = (child: NodeChangeset): Delta.Modify => {
-			assert.deepEqual(child, nodeChange);
+		const deltaFromChild = ({ change }: TaggedChange<NodeChangeset>): Delta.Modify => {
+			assert.deepEqual(change, nodeChange);
 			return { type: Delta.MarkType.Modify, fields: nestedMoveDelta };
 		};
 		const actual = SF.sequenceFieldToDelta(
 			makeAnonChange(changeset),
-			deltaFromChild,
+			(change) => deltaFromChild(makeAnonChange(change)),
 			MemoizedIdRangeAllocator.fromNextId(),
 		);
 		assertMarkListEqual(actual, expected);
@@ -419,8 +426,8 @@ describe("SequenceField - toDelta", () => {
 				Mark.revive(fakeRepairData(tag, 0, 1)),
 				Mark.revive(fakeRepairData(tag, 1, 1), undefined, { changes: childChange1 }),
 			];
-			const actual = toDelta(changeset);
-			const expected: Delta.MarkList = [1, childChange1Delta];
+			const actual = toDelta(changeset, tag);
+			const expected: Delta.MarkList = [1, childChange1Delta(tag)];
 			assertMarkListEqual(actual, expected);
 		});
 
