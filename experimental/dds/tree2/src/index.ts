@@ -79,7 +79,8 @@ export {
 	DeltaVisit,
 	ChangeAtomId,
 	DeltaVisitor,
-	RemovedContentDeltaVisitor,
+	RemoveAgnosticVisitor,
+	RemoveAwareVisitorMethods,
 } from "./core";
 
 export {

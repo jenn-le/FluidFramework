@@ -97,23 +97,33 @@ export function visitDelta(delta: Delta.Root, visitor: DeltaVisitor): void {
 	}
 }
 
+function failOnRemove(): never {
+	assert(false, "Unable to visit remove-aware delta");
+}
+
+export function visitRemoveFreeDelta(delta: Delta.Root, visitor: RemoveAgnosticVisitor): void {
+	const fullVisitor: DeltaVisitor = {
+		...visitor,
+		enterRemovedNode: failOnRemove,
+		exitRemovedNode: failOnRemove,
+		onRemove: failOnRemove,
+		onRestore: failOnRemove,
+		onMoveOutRemovedNodes: failOnRemove,
+	};
+	visitDelta(delta, fullVisitor);
+}
+
 /**
  * A function that walks a visitor through a delta.
  * @alpha
  */
-export type DeltaVisit = (delta: Delta.Root, visitor: DeltaVisitor) => void;
+export type DeltaVisit<TVisitor = DeltaVisitor> = (delta: Delta.Root, visitor: TVisitor) => void;
 
 /**
  * An object that can be walked through a Delta.
  * @alpha
  */
 export interface DeltaVisitor {
-	/**
-	 * Forks the current visitor.
-	 * Any fork produced this way is freed before the visit terminates.
-	 */
-	fork(): DeltaVisitor;
-	free(): void;
 	onDelete(index: number, count: number): void;
 	onInsert(index: number, content: Delta.ProtoNodes): void;
 	onMoveOut(index: number, count: number, id: Delta.MoveId): void;
@@ -126,25 +136,40 @@ export interface DeltaVisitor {
 	exitNode(index: number): void;
 	enterField(key: FieldKey): void;
 	exitField(key: FieldKey): void;
-	/**
-	 * Optional set of methods that supported in order to visit changes to removed content.
-	 * If not provided:
-	 * - `onRemove` calls are redirected to `onDelete`
-	 * - all other calls are ignored
-	 */
-	readonly removedContent?: RemovedContentDeltaVisitor;
+
+	enterRemovedNode(nodeId: Delta.RemovedNodeId): void;
+	exitRemovedNode(nodeId: Delta.RemovedNodeId): void;
+	onRemove(index: number, count: number, nodeId: Delta.RemovedNodeId): void;
+	onRestore(index: number, count: number, nodeId: Delta.RemovedNodeId): void;
+	onMoveOutRemovedNodes(nodeId: Delta.RemovedNodeId, count: number, id: Delta.MoveId): void;
 }
 
 /**
- * An object that can be walked through a Delta for removed content.
  * @alpha
  */
-export interface RemovedContentDeltaVisitor {
-	enterNode(nodeId: Delta.RemovedNodeId): void;
-	exitNode(nodeId: Delta.RemovedNodeId): void;
-	onRemove(index: number, count: number, nodeId: Delta.RemovedNodeId): void;
-	onRestore(index: number, count: number, nodeId: Delta.RemovedNodeId): void;
-	onMoveOut(nodeId: Delta.RemovedNodeId, count: number, id: Delta.MoveId): void;
+export type RemoveAwareVisitorMethods =
+	| "enterRemovedNode"
+	| "exitRemovedNode"
+	| "onRemove"
+	| "onRestore"
+	| "onMoveOutRemovedNodes";
+
+/**
+ * An object that can be walked through a Delta so long as it does not need to be aware of removed nodes.
+ * @alpha
+ */
+export interface RemoveAgnosticVisitor extends Omit<DeltaVisitor, RemoveAwareVisitorMethods> {
+	/**
+	 * Forks the visitor.
+	 * Any visitor produced this way is freed before the visit terminates.
+	 */
+	fork(): RemoveAgnosticVisitor;
+	/**
+	 * Frees the visitor.
+	 * Called on all visitors returned by `fork`.
+	 * Note that the visitor passed to `visitDelta` is not freed.
+	 */
+	free(): void;
 }
 
 interface PassConfig {
@@ -182,8 +207,8 @@ function visitModify(
 	let containsMovesOrDeletes = false;
 
 	if (modify.fields !== undefined) {
-		if (removedNodes !== undefined && visitor.removedContent !== undefined) {
-			visitor.removedContent.enterNode(removedNodes);
+		if (removedNodes !== undefined) {
+			visitor.enterRemovedNode(removedNodes);
 		} else {
 			visitor.enterNode(index);
 		}
@@ -191,8 +216,8 @@ function visitModify(
 			const result = visitFieldMarks(modify.fields, visitor, config);
 			containsMovesOrDeletes ||= result;
 		}
-		if (removedNodes !== undefined && visitor.removedContent !== undefined) {
-			visitor.removedContent.exitNode(removedNodes);
+		if (removedNodes !== undefined) {
+			visitor.exitRemovedNode(removedNodes);
 		} else {
 			visitor.exitNode(index);
 		}
@@ -216,8 +241,8 @@ function firstPass(delta: Delta.MarkList, visitor: DeltaVisitor, config: PassCon
 					// Handled in the second pass
 					visitModify(index, mark, visitor, config);
 					markHasMoveOrDelete = true;
-					if (mark.removedNodes !== undefined && visitor.removedContent !== undefined) {
-						visitor.removedContent.onRemove(index, mark.count, mark.removedNodes);
+					if (mark.removedNodes !== undefined) {
+						visitor.onRemove(index, mark.count, mark.removedNodes);
 					} else {
 						index += mark.count;
 					}
@@ -233,12 +258,8 @@ function firstPass(delta: Delta.MarkList, visitor: DeltaVisitor, config: PassCon
 					if (markHasMoveOrDelete) {
 						config.modsToMovedTrees.set(mark.moveId, mark);
 					}
-					if (mark.removedNodes !== undefined && visitor.removedContent !== undefined) {
-						visitor.removedContent.onMoveOut(
-							mark.removedNodes,
-							mark.count,
-							mark.moveId,
-						);
+					if (mark.removedNodes !== undefined) {
+						visitor.onMoveOutRemovedNodes(mark.removedNodes, mark.count, mark.moveId);
 					} else {
 						visitor.onMoveOut(index, mark.count, mark.moveId);
 					}
@@ -261,16 +282,7 @@ function firstPass(delta: Delta.MarkList, visitor: DeltaVisitor, config: PassCon
 					break;
 				case Delta.MarkType.Insert:
 					if (mark.removedNodes !== undefined) {
-						if (visitor.removedContent !== undefined) {
-							visitor.removedContent.onRestore(
-								index,
-								mark.content.length,
-								mark.removedNodes,
-							);
-						} else {
-							// The nodes were never removed because the visitor does not support removal.
-							// Nothing needs to done to ensure the nodes a present.
-						}
+						visitor.onRestore(index, mark.content.length, mark.removedNodes);
 					} else {
 						visitor.onInsert(index, mark.content);
 					}

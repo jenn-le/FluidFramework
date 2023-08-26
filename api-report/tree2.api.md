@@ -71,7 +71,7 @@ export type AnchorsCompare = CompareFunction<UpPath>;
 
 // @alpha @sealed
 export class AnchorSet implements ISubscribable<AnchorSetRootEvents>, AnchorLocator {
-    applyDelta(delta: Delta.Root): void;
+    applyDelta(delta: Delta.Root, visit?: DeltaVisit<RemoveAgnosticVisitor>): void;
     // (undocumented)
     forget(anchor: Anchor): void;
     internalizePath(originalPath: UpPath): UpPath;
@@ -438,7 +438,7 @@ declare namespace Delta {
 export { Delta }
 
 // @alpha
-export type DeltaVisit = (delta: Delta.Root, visitor: DeltaVisitor) => void;
+export type DeltaVisit<TVisitor = DeltaVisitor> = (delta: Delta.Root, visitor: TVisitor) => void;
 
 // @alpha
 export interface DeltaVisitor {
@@ -447,12 +447,13 @@ export interface DeltaVisitor {
     // (undocumented)
     enterNode(index: number): void;
     // (undocumented)
+    enterRemovedNode(nodeId: Delta.RemovedNodeId): void;
+    // (undocumented)
     exitField(key: FieldKey): void;
     // (undocumented)
     exitNode(index: number): void;
-    fork(): DeltaVisitor;
     // (undocumented)
-    free(): void;
+    exitRemovedNode(nodeId: Delta.RemovedNodeId): void;
     // (undocumented)
     onDelete(index: number, count: number): void;
     // (undocumented)
@@ -461,7 +462,12 @@ export interface DeltaVisitor {
     onMoveIn(index: number, count: number, id: Delta.MoveId): void;
     // (undocumented)
     onMoveOut(index: number, count: number, id: Delta.MoveId): void;
-    readonly removedContent?: RemovedContentDeltaVisitor;
+    // (undocumented)
+    onMoveOutRemovedNodes(nodeId: Delta.RemovedNodeId, count: number, id: Delta.MoveId): void;
+    // (undocumented)
+    onRemove(index: number, count: number, nodeId: Delta.RemovedNodeId): void;
+    // (undocumented)
+    onRestore(index: number, count: number, nodeId: Delta.RemovedNodeId): void;
 }
 
 // @alpha
@@ -880,7 +886,7 @@ export interface IdRange {
 // @alpha
 export interface IEditableForest extends IForestSubscription {
     readonly anchors: AnchorSet;
-    applyDelta(delta: Delta.Root, visit?: DeltaVisit): void;
+    applyDelta(delta: Delta.Root, visit?: DeltaVisit<RemoveAgnosticVisitor>): void;
 }
 
 // @alpha
@@ -935,6 +941,7 @@ type _InlineTrick = 0;
 interface Insert<TTree = ProtoNode> extends HasModifications<TTree> {
     readonly content: readonly TTree[];
     readonly isTransient?: true;
+    // (undocumented)
     readonly removedNodes?: RemovedNodeId;
     // (undocumented)
     readonly type: typeof MarkType.Insert;
@@ -1609,18 +1616,13 @@ type RecursiveTreeSchemaSpecification = unknown;
 type _RecursiveTrick = never;
 
 // @alpha
-export interface RemovedContentDeltaVisitor {
-    // (undocumented)
-    enterNode(nodeId: Delta.RemovedNodeId): void;
-    // (undocumented)
-    exitNode(nodeId: Delta.RemovedNodeId): void;
-    // (undocumented)
-    onMoveOut(nodeId: Delta.RemovedNodeId, count: number, id: Delta.MoveId): void;
-    // (undocumented)
-    onRemove(index: number, count: number, nodeId: Delta.RemovedNodeId): void;
-    // (undocumented)
-    onRestore(index: number, count: number, nodeId: Delta.RemovedNodeId): void;
+export interface RemoveAgnosticVisitor extends Omit<DeltaVisitor, RemoveAwareVisitorMethods> {
+    fork(): RemoveAgnosticVisitor;
+    free(): void;
 }
+
+// @alpha (undocumented)
+export type RemoveAwareVisitorMethods = "enterRemovedNode" | "exitRemovedNode" | "onRemove" | "onRestore" | "onMoveOutRemovedNodes";
 
 // @alpha
 interface RemovedNodeId {

@@ -13,6 +13,7 @@ import {
 	ITreeCursorSynchronous,
 	rootFieldKey,
 	DeltaVisit,
+	RemoveAgnosticVisitor,
 } from "../tree";
 import { IForestSubscription, ITreeSubscriptionCursor } from "./forest";
 
@@ -35,7 +36,7 @@ export interface IEditableForest extends IForestSubscription {
 	 * Applies the supplied Delta to the forest.
 	 * Does NOT update anchors.
 	 */
-	applyDelta(delta: Delta.Root, visit?: DeltaVisit): void;
+	applyDelta(delta: Delta.Root, visit?: DeltaVisit<RemoveAgnosticVisitor>): void;
 }
 
 /**

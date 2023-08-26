@@ -19,13 +19,14 @@ import {
 	Delta,
 	UpPath,
 	Anchor,
-	visitDelta,
 	FieldAnchor,
 	ForestEvents,
 	ITreeSubscriptionCursorState,
 	rootFieldKey,
 	mapCursorField,
 	DeltaVisit,
+	RemoveAgnosticVisitor,
+	visitRemoveFreeDelta,
 } from "../../core";
 import { brand, fail, getOrAddEmptyToMap } from "../../util";
 import { createEmitter } from "../../events";
@@ -86,7 +87,10 @@ class ChunkedForest extends SimpleDependee implements IEditableForest {
 		this.anchors.forget(anchor);
 	}
 
-	public applyDelta(delta: Delta.Root, visit: DeltaVisit = visitDelta): void {
+	public applyDelta(
+		delta: Delta.Root,
+		visit: DeltaVisit<RemoveAgnosticVisitor> = visitRemoveFreeDelta,
+	): void {
 		this.events.emit("beforeDelta", delta);
 		this.invalidateDependents();
 
