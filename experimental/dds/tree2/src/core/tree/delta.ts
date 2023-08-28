@@ -188,6 +188,7 @@ export type Skip = number;
  */
 export interface HasModifications<TTree = ProtoNode> {
 	readonly fields?: FieldMarks<TTree>;
+	readonly removedNodes?: RemovedNodeId;
 }
 
 /**
@@ -196,7 +197,6 @@ export interface HasModifications<TTree = ProtoNode> {
  */
 export interface Modify<TTree = ProtoNode> extends HasModifications<TTree> {
 	readonly type: typeof MarkType.Modify;
-	readonly removedNode?: RemovedNodeId;
 }
 
 /**
@@ -211,8 +211,6 @@ export interface Delete<TTree = ProtoNode> extends HasModifications<TTree> {
 	 * Must be 1 when `fields` is populated.
 	 */
 	readonly count: number;
-	// TODO: should this be required?
-	readonly removedNodes?: RemovedNodeId;
 }
 
 /**
@@ -229,8 +227,6 @@ export interface MoveOut<TTree = ProtoNode> extends HasModifications<TTree> {
 	 * The delta should carry exactly one `MoveIn` mark with the same move ID.
 	 */
 	readonly moveId: MoveId;
-
-	readonly removedNodes?: RemovedNodeId;
 }
 
 /**
@@ -265,8 +261,6 @@ export interface Insert<TTree = ProtoNode> extends HasModifications<TTree> {
 	 * This is used in scenarios where content is moved out from under an inserted subtree that is then deleted.
 	 */
 	readonly isTransient?: true;
-
-	readonly removedNodes?: RemovedNodeId;
 }
 
 /**

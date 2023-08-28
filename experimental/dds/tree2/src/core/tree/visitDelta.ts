@@ -276,7 +276,7 @@ function firstPass(delta: Delta.MarkList, visitor: DeltaVisitor, config: PassCon
 						mark,
 						visitor,
 						config,
-						mark.removedNode,
+						mark.removedNodes,
 					);
 					index += 1;
 					break;
@@ -314,14 +314,16 @@ function secondPass(delta: Delta.MarkList, visitor: DeltaVisitor, config: PassCo
 			const type = mark.type;
 			switch (type) {
 				case Delta.MarkType.Delete:
-					visitModify(index, mark, visitor, config);
-					visitor.onDelete(index, mark.count);
+					visitModify(index, mark, visitor, config, mark.removedNodes);
+					if (mark.removedNodes === undefined) {
+						visitor.onDelete(index, mark.count);
+					}
 					break;
 				case Delta.MarkType.MoveOut:
 					// Handled in the first pass
 					break;
 				case Delta.MarkType.Modify:
-					visitModify(index, mark, visitor, config);
+					visitModify(index, mark, visitor, config, mark.removedNodes);
 					index += 1;
 					break;
 				case Delta.MarkType.Insert:
@@ -389,7 +391,7 @@ function secondPass(delta: Delta.MarkList, visitor: DeltaVisitor, config: PassCo
 					if (mark.count === 1) {
 						const modify = config.modsToMovedTrees.get(mark.moveId);
 						if (modify !== undefined) {
-							visitModify(index, modify, visitor, config);
+							visitModify(index, modify, visitor, config, modify.removedNodes);
 						}
 					}
 					index = endIndex;

@@ -19,7 +19,7 @@ export abstract class EditBuilder<TChange> implements ChangeFamilyEditor {
 	 * @sealed
 	 */
 	protected applyChange(change: TChange): void {
-		this.changeFamily.rebaser.rebaseAnchors(this.anchorSet, change);
+		// this.changeFamily.rebaser.rebaseAnchors(this.anchorSet, change);
 		this.changeReceiver(change);
 	}
 

@@ -576,9 +576,9 @@ export class SharedTreeBranch<TEditor extends ChangeFamilyEditor, TChange> exten
 	}
 
 	private emitAndRebaseAnchors(change: SharedTreeBranchChange<TChange>): void {
-		if (this.anchors !== undefined && change.change !== undefined) {
-			this.changeFamily.rebaser.rebaseAnchors(this.anchors, change.change);
-		}
+		// if (this.anchors !== undefined && change.change !== undefined) {
+		// 	this.changeFamily.rebaser.rebaseAnchors(this.anchors, change.change);
+		// }
 
 		this.emit("change", change);
 	}

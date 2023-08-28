@@ -115,44 +115,40 @@ class ObjectForest extends SimpleDependee implements IEditableForest {
 		// which can edit, but is the only cursor allowed at the time.
 
 		const moves: Map<Delta.MoveId, DetachedField> = new Map();
-		const cursor: Cursor = this.allocateCursor();
-		cursor.setToAboveDetachedSequences();
-		const moveIn = (index: number, toAttach: DetachedField): number => {
-			const detachedKey = detachedFieldAsKey(toAttach);
-			const children = getMapTreeField(this.roots, detachedKey, false);
-			this.roots.fields.delete(detachedKey);
-			if (children.length === 0) {
-				return 0; // Prevent creating 0 sized fields when inserting empty into empty.
-			}
-
-			const [parent, key] = cursor.getParent();
-			const destinationField = getMapTreeField(parent, key, true);
-			assertValidIndex(index, destinationField, true);
-			// TODO: this will fail for very large moves due to argument limits.
-			destinationField.splice(index, 0, ...children);
-
-			return children.length;
-		};
-		const cursors: ITreeSubscriptionCursor[] = [cursor];
 		const visitor = {
-			cursor,
+			cursor: this.allocateCursor(),
+			forest: this,
 			fork() {
-				const newCursor = this.cursor.fork();
-				cursors.push(newCursor);
-				return { ...visitor, cursor: newCursor };
+				return { ...visitor, cursor: this.cursor.fork() };
 			},
 			free() {
 				this.cursor.free();
 			},
-			onDelete: (index: number, count: number): void => {
-				visitor.onMoveOut(index, count);
+			moveIn(index: number, toAttach: DetachedField): number {
+				const detachedKey = detachedFieldAsKey(toAttach);
+				const children = getMapTreeField(this.forest.roots, detachedKey, false);
+				this.forest.roots.fields.delete(detachedKey);
+				if (children.length === 0) {
+					return 0; // Prevent creating 0 sized fields when inserting empty into empty.
+				}
+
+				const [parent, key] = this.cursor.getParent();
+				const destinationField = getMapTreeField(parent, key, true);
+				assertValidIndex(index, destinationField, true);
+				// TODO: this will fail for very large moves due to argument limits.
+				destinationField.splice(index, 0, ...children);
+
+				return children.length;
 			},
-			onInsert: (index: number, content: Delta.ProtoNode[]): void => {
-				const range = this.add(content);
-				moveIn(index, range);
+			onDelete(index: number, count: number): void {
+				this.onMoveOut(index, count);
 			},
-			onMoveOut: (index: number, count: number, id?: Delta.MoveId): void => {
-				const [parent, key] = cursor.getParent();
+			onInsert(index: number, content: Delta.ProtoNode[]): void {
+				const range = this.forest.add(content);
+				this.moveIn(index, range);
+			},
+			onMoveOut(index: number, count: number, id?: Delta.MoveId): void {
+				const [parent, key] = this.cursor.getParent();
 				const sourceField = getMapTreeField(parent, key, false);
 				const startIndex = index;
 				const endIndex = index + count;
@@ -163,29 +159,38 @@ class ObjectForest extends SimpleDependee implements IEditableForest {
 					0x371 /* detached range's end must be after its start */,
 				);
 				const newField = sourceField.splice(startIndex, endIndex - startIndex);
-				const field = this.addFieldAsDetached(newField);
+				const field = this.forest.addFieldAsDetached(newField);
 				if (id !== undefined) {
 					moves.set(id, field);
 				} else {
-					this.delete(field);
+					this.forest.delete(field);
 				}
 				if (sourceField.length === 0) {
 					parent.fields.delete(key);
 				}
 			},
-			onMoveIn: (index: number, count: number, id: Delta.MoveId): void => {
+			onMoveIn(index: number, count: number, id: Delta.MoveId): void {
 				const toAttach = moves.get(id) ?? fail("move in without move out");
 				moves.delete(id);
-				const countMoved = moveIn(index, toAttach);
+				const countMoved = this.moveIn(index, toAttach);
 				assert(countMoved === count, 0x369 /* counts must match */);
 			},
-			enterNode: (index: number): void => cursor.enterNode(index),
-			exitNode: (index: number): void => cursor.exitNode(),
-			enterField: (key: FieldKey): void => cursor.enterField(key),
-			exitField: (key: FieldKey): void => cursor.exitField(),
+			enterNode(index: number): void {
+				this.cursor.enterNode(index);
+			},
+			exitNode(index: number): void {
+				this.cursor.exitNode();
+			},
+			enterField(key: FieldKey): void {
+				this.cursor.enterField(key);
+			},
+			exitField(key: FieldKey): void {
+				this.cursor.exitField();
+			},
 		};
+		visitor.cursor.setToAboveDetachedSequences();
 		visit(delta, visitor);
-		cursor.free();
+		visitor.cursor.free();
 
 		this.events.emit("afterDelta", delta);
 	}

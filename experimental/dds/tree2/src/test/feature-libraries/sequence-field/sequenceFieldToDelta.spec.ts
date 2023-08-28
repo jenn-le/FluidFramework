@@ -111,7 +111,7 @@ describe("SequenceField - toDelta", () => {
 		const expected: Delta.MarkList = [
 			{
 				type: Delta.MarkType.Insert,
-				content: contentCursor,
+				content: [undefined] as any,
 			},
 		];
 		assertMarkListEqual(actual, expected);
@@ -141,7 +141,7 @@ describe("SequenceField - toDelta", () => {
 		const expected: Delta.MarkList = [
 			{
 				type: Delta.MarkType.Insert,
-				content: contentCursor,
+				content: [undefined] as any,
 				fields: fieldChanges,
 			},
 		];
