@@ -399,8 +399,6 @@ export const defaultSchemaPolicy: FullSchemaPolicy;
 interface Delete<TTree = ProtoNode> extends HasModifications<TTree> {
     readonly count: number;
     // (undocumented)
-    readonly removedNodes?: RemovedNodeId;
-    // (undocumented)
     readonly type: typeof MarkType.Delete;
 }
 
@@ -835,6 +833,8 @@ export interface HasListeners<E extends Events<E>> {
 interface HasModifications<TTree = ProtoNode> {
     // (undocumented)
     readonly fields?: FieldMarks<TTree>;
+    // (undocumented)
+    readonly removedNodes?: RemovedNodeId;
 }
 
 // @alpha (undocumented)
@@ -941,8 +941,6 @@ type _InlineTrick = 0;
 interface Insert<TTree = ProtoNode> extends HasModifications<TTree> {
     readonly content: readonly TTree[];
     readonly isTransient?: true;
-    // (undocumented)
-    readonly removedNodes?: RemovedNodeId;
     // (undocumented)
     readonly type: typeof MarkType.Insert;
 }
@@ -1352,8 +1350,6 @@ export const MemoizedIdRangeAllocator: {
 // @alpha
 interface Modify<TTree = ProtoNode> extends HasModifications<TTree> {
     // (undocumented)
-    readonly removedNode?: RemovedNodeId;
-    // (undocumented)
     readonly type: typeof MarkType.Modify;
 }
 
@@ -1384,8 +1380,6 @@ interface MoveIn {
 interface MoveOut<TTree = ProtoNode> extends HasModifications<TTree> {
     readonly count: number;
     readonly moveId: MoveId;
-    // (undocumented)
-    readonly removedNodes?: RemovedNodeId;
     // (undocumented)
     readonly type: typeof MarkType.MoveOut;
 }
