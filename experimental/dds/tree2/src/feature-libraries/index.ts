@@ -153,7 +153,7 @@ export {
 
 export { mapFieldMarks, mapMark, mapMarkList, populateChildModifications } from "./deltaUtils";
 
-export { ForestRepairDataStore, ForestRepairDataStoreProvider } from "./forestRepairDataStore";
+export { ForestRepairDataStore } from "./forestRepairDataStore";
 export { dummyRepairDataStore } from "./fakeRepairDataStore";
 
 export { TreeIndex } from "./treeIndex";

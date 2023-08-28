@@ -33,12 +33,10 @@ import {
 	UnwrappedEditableField,
 	DefaultChangeset,
 	buildForest,
-	ForestRepairDataStoreProvider,
 	SchemaEditor,
 	NodeKeyIndex,
 	createNodeKeyManager,
 	NewFieldContent,
-	ModularChangeset,
 	nodeKeyFieldKey,
 	FieldSchema,
 } from "../feature-libraries";
@@ -92,16 +90,10 @@ export class SharedTree
 		const schemaSummarizer = new SchemaSummarizer(runtime, schema, options);
 		const forestSummarizer = new ForestSummarizer(forest);
 		const changeFamily = new DefaultChangeFamily(options);
-		const repairProvider = new ForestRepairDataStoreProvider(
-			forest,
-			schema,
-			(change: ModularChangeset) => changeFamily.intoDelta(change),
-		);
 		super(
 			[schemaSummarizer, forestSummarizer],
 			changeFamily,
 			forest.anchors,
-			repairProvider,
 			options,
 			id,
 			runtime,
@@ -118,7 +110,6 @@ export class SharedTree
 			// This allows editing schema on the view without sending ops, which is incorrect behavior.
 			schema,
 			forest,
-			repairProvider,
 			nodeKeyManager: createNodeKeyManager(this.runtime.idCompressor),
 			nodeKeyIndex: this.nodeKeyIndex,
 			events: this._events,

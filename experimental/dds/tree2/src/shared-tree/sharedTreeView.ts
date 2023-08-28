@@ -36,14 +36,12 @@ import {
 	DefaultChangeFamily,
 	defaultSchemaPolicy,
 	getEditableTreeContext,
-	ForestRepairDataStoreProvider,
 	DefaultEditBuilder,
 	NewFieldContent,
 	NodeKeyManager,
 	createNodeKeyManager,
 	LocalNodeKey,
 	ForestRepairDataStore,
-	ModularChangeset,
 	nodeKeyFieldKey,
 	FieldSchema,
 	TreeIndex,
@@ -293,7 +291,6 @@ export function createSharedTreeView(args?: {
 	changeFamily?: DefaultChangeFamily;
 	schema?: InMemoryStoredSchemaRepository;
 	forest?: IEditableForest;
-	repairProvider?: ForestRepairDataStoreProvider<DefaultChangeset>;
 	nodeKeyManager?: NodeKeyManager;
 	nodeKeyIndex?: NodeKeyIndex;
 	events?: ISubscribable<ViewEvents> & IEmitter<ViewEvents> & HasListeners<ViewEvents>;
@@ -302,11 +299,6 @@ export function createSharedTreeView(args?: {
 	const forest = args?.forest ?? buildForest(schema, new AnchorSet());
 	const changeFamily =
 		args?.changeFamily ?? new DefaultChangeFamily({ jsonValidator: noopValidator });
-	const repairDataStoreProvider =
-		args?.repairProvider ??
-		new ForestRepairDataStoreProvider(forest, schema, (change) =>
-			changeFamily.intoDelta(change),
-		);
 	const undoRedoManager = UndoRedoManager.create(changeFamily);
 	const branch =
 		args?.branch ??
@@ -316,7 +308,6 @@ export function createSharedTreeView(args?: {
 				revision: assertIsRevisionTag("00000000-0000-4000-8000-000000000000"),
 			},
 			changeFamily,
-			repairDataStoreProvider,
 			undoRedoManager,
 			forest.anchors,
 		);
@@ -591,12 +582,7 @@ export class SharedTreeView implements ISharedTreeBranchView {
 		const anchors = new AnchorSet();
 		const storedSchema = this.storedSchema.clone();
 		const forest = this.forest.clone(storedSchema, anchors);
-		const repairDataStoreProvider = new ForestRepairDataStoreProvider(
-			forest,
-			storedSchema,
-			(change: ModularChangeset) => this.changeFamily.intoDelta(change),
-		);
-		const branch = this.branch.fork(repairDataStoreProvider, anchors);
+		const branch = this.branch.fork(anchors);
 		const context = getEditableTreeContext(
 			forest,
 			branch.editor,

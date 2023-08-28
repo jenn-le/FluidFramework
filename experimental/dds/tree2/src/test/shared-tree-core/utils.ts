@@ -8,7 +8,6 @@ import { SharedTreeBranch, SharedTreeCore, Summarizable } from "../../shared-tre
 import { AnchorSet } from "../../core";
 import { typeboxValidator } from "../../external-utilities";
 import { DefaultChangeFamily, DefaultChangeset, DefaultEditBuilder } from "../../feature-libraries";
-import { MockRepairDataStoreProvider } from "../utils";
 
 /**
  * A `SharedTreeCore` with
@@ -32,7 +31,6 @@ export class TestSharedTreeCore extends SharedTreeCore<DefaultEditBuilder, Defau
 			summarizables,
 			new DefaultChangeFamily({ jsonValidator: typeboxValidator }),
 			anchors,
-			new MockRepairDataStoreProvider(),
 			{ jsonValidator: typeboxValidator },
 			id,
 			runtime,

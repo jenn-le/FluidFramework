@@ -5,16 +5,12 @@
 
 import { assert, unreachableCase } from "@fluidframework/common-utils";
 import {
-	AnchorSet,
 	castCursorToSynchronous,
 	Delta,
 	EmptyKey,
 	FieldKey,
 	getDescendant,
-	IEditableForest,
 	IForestSubscription,
-	InMemoryStoredSchemaRepository,
-	IRepairDataStoreProvider,
 	ITreeCursorSynchronous,
 	keyAsDetachedField,
 	moveToDetachedField,
@@ -182,43 +178,5 @@ export class ForestRepairDataStore<TChange> implements RepairDataStore<TChange> 
 			cursor.firstNode();
 			return cursor;
 		});
-	}
-}
-
-export class ForestRepairDataStoreProvider<TChange> implements IRepairDataStoreProvider<TChange> {
-	private frozenForest: IForestSubscription | undefined;
-
-	public constructor(
-		private readonly forest: IEditableForest,
-		private readonly storedSchema: InMemoryStoredSchemaRepository,
-		private readonly intoDelta: (change: TChange) => Delta.Root,
-	) {}
-
-	public freeze(): void {
-		this.frozenForest = this.forest.clone(this.storedSchema.clone(), new AnchorSet());
-	}
-
-	public applyChange(change: TChange): void {
-		if (this.frozenForest === undefined) {
-			this.forest.applyDelta(this.intoDelta(change));
-		}
-	}
-
-	public createRepairData(): ForestRepairDataStore<TChange> {
-		const repairDataStore =
-			this.frozenForest !== undefined
-				? new ForestRepairDataStore(this.frozenForest, this.intoDelta)
-				: new ForestRepairDataStore(this.forest, this.intoDelta);
-		this.frozenForest = undefined;
-		return repairDataStore;
-	}
-
-	public clone(forest?: IEditableForest): ForestRepairDataStoreProvider<TChange> {
-		const storedSchema = this.storedSchema.clone();
-		return new ForestRepairDataStoreProvider(
-			forest ?? this.forest.clone(storedSchema, new AnchorSet()),
-			storedSchema,
-			this.intoDelta,
-		);
 	}
 }

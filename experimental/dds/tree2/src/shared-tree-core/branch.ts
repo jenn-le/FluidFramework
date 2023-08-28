@@ -10,7 +10,6 @@ import {
 	ChangeFamilyEditor,
 	findAncestor,
 	GraphCommit,
-	IRepairDataStoreProvider,
 	mintCommit,
 	mintRevisionTag,
 	RepairDataStore,
@@ -133,7 +132,6 @@ export class SharedTreeBranch<TEditor extends ChangeFamilyEditor, TChange> exten
 	public constructor(
 		private head: GraphCommit<TChange>,
 		public readonly changeFamily: ChangeFamily<TEditor, TChange>,
-		public repairDataStoreProvider?: IRepairDataStoreProvider<TChange>,
 		private readonly undoRedoManager?: UndoRedoManager<TChange, TEditor>,
 		private readonly anchors?: AnchorSet,
 	) {
@@ -173,17 +171,9 @@ export class SharedTreeBranch<TEditor extends ChangeFamilyEditor, TChange> exten
 	): [change: TChange, newCommit: GraphCommit<TChange>] {
 		this.assertNotDisposed();
 
-		// If this is not part of a transaction, capture the repair data
-		let repairData: RepairDataStore<TChange> | undefined;
-		if (!this.isTransacting() && this.repairDataStoreProvider !== undefined) {
-			repairData = this.repairDataStoreProvider.createRepairData();
-			repairData.capture(change, revision);
-		}
-
 		this.head = mintCommit(this.head, {
 			revision,
 			change,
-			repairData,
 		});
 
 		this.transactions.repairStore?.capture(change, this.head.revision);
@@ -212,12 +202,6 @@ export class SharedTreeBranch<TEditor extends ChangeFamilyEditor, TChange> exten
 	 */
 	public startTransaction(repairStore?: RepairDataStore<TChange>): void {
 		this.assertNotDisposed();
-		if (!this.isTransacting() && this.repairDataStoreProvider !== undefined) {
-			// If this is the start of a transaction stack, freeze the
-			// repair data store provider so that repair data can be captured based on the
-			// state of the branch at the start of the transaction.
-			this.repairDataStoreProvider.freeze();
-		}
 		const forks = new Set<SharedTreeBranch<TEditor, TChange>>();
 		const onDisposeUnSubscribes: (() => void)[] = [];
 		const onForkUnSubscribe = onForkTransitive(this, (fork) => {
@@ -261,16 +245,9 @@ export class SharedTreeBranch<TEditor extends ChangeFamilyEditor, TChange> exten
 		const squashedChange = this.changeFamily.rebaser.compose(anonymousCommits);
 		const revision = mintRevisionTag();
 
-		let repairData: RepairDataStore<TChange> | undefined;
-		if (!this.isTransacting() && this.repairDataStoreProvider !== undefined) {
-			repairData = this.repairDataStoreProvider.createRepairData();
-			repairData?.capture(squashedChange, revision);
-		}
-
 		this.head = mintCommit(startCommit, {
 			revision,
 			change: squashedChange,
-			repairData,
 		});
 
 		// If this transaction is not nested, add it to the undo commit tree and capture its repair data
@@ -305,7 +282,7 @@ export class SharedTreeBranch<TEditor extends ChangeFamilyEditor, TChange> exten
 		abortedCommits: GraphCommit<TChange>[],
 	] {
 		this.assertNotDisposed();
-		const [startCommit, commits, repairStore] = this.popTransaction();
+		const [startCommit, commits] = this.popTransaction();
 		this.editor.exitTransaction();
 		this.head = startCommit;
 
@@ -315,7 +292,7 @@ export class SharedTreeBranch<TEditor extends ChangeFamilyEditor, TChange> exten
 
 		const inverses: TaggedChange<TChange>[] = [];
 		for (let i = commits.length - 1; i >= 0; i--) {
-			const inverse = this.changeFamily.rebaser.invert(commits[i], false, repairStore);
+			const inverse = this.changeFamily.rebaser.invert(commits[i], false);
 			inverses.push(tagChange(inverse, mintRevisionTag()));
 		}
 		const change =
@@ -400,21 +377,15 @@ export class SharedTreeBranch<TEditor extends ChangeFamilyEditor, TChange> exten
 	/**
 	 * Spawn a new branch that is based off of the current state of this branch.
 	 * Changes made to the new branch will not be applied to this branch until the new branch is merged back in.
-	 * @param repairDataStoreProvider - a {@link RepairDataStoreProvider} that reflects the state of the new branch. If one is not
-	 * provided, then it will be cloned from this branch.
 	 * @param anchors - an optional set of anchors that the new branch is responsible for rebasing
 	 *
 	 * @remarks Forks created during a transaction will be disposed when the transaction ends.
 	 */
-	public fork(
-		repairDataStoreProvider?: IRepairDataStoreProvider<TChange>,
-		anchors?: AnchorSet,
-	): SharedTreeBranch<TEditor, TChange> {
+	public fork(anchors?: AnchorSet): SharedTreeBranch<TEditor, TChange> {
 		this.assertNotDisposed();
 		const fork = new SharedTreeBranch(
 			this.head,
 			this.changeFamily,
-			repairDataStoreProvider ?? this.repairDataStoreProvider?.clone(),
 			this.undoRedoManager?.clone(),
 			anchors,
 		);
@@ -535,18 +506,12 @@ export class SharedTreeBranch<TEditor extends ChangeFamilyEditor, TChange> exten
 		onto: SharedTreeBranch<TEditor, TChange>,
 		upTo = onto.getHead(),
 	) {
-		const { head, repairDataStoreProvider } = branch;
+		const { head } = branch;
 		if (head === upTo) {
 			return undefined;
 		}
 
-		const rebaseResult = rebaseBranch(
-			this.changeFamily.rebaser,
-			repairDataStoreProvider,
-			head,
-			upTo,
-			onto.getHead(),
-		);
+		const rebaseResult = rebaseBranch(this.changeFamily.rebaser, head, upTo, onto.getHead());
 		const [rebasedHead] = rebaseResult;
 		if (this.head === rebasedHead) {
 			return undefined;

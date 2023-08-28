@@ -46,7 +46,6 @@ import {
 	DefaultChangeset,
 	DefaultEditBuilder,
 	defaultSchemaPolicy,
-	ForestRepairDataStoreProvider,
 	jsonableTreeFromCursor,
 	mapFieldMarks,
 	mapMarkList,
@@ -78,7 +77,6 @@ import {
 	RepairDataStore,
 	ITreeCursorSynchronous,
 	FieldKey,
-	IRepairDataStoreProvider,
 	UndoRedoManager,
 	ChangeFamilyEditor,
 	ChangeFamily,
@@ -576,7 +574,6 @@ export function validateTreeConsistency(treeA: ISharedTree, treeB: ISharedTree):
 export function viewWithContent(
 	content: TreeContent,
 	args?: {
-		repairProvider?: ForestRepairDataStoreProvider<DefaultChangeset>;
 		nodeKeyManager?: NodeKeyManager;
 		nodeKeyIndex?: NodeKeyIndex;
 		events?: ISubscribable<ViewEvents> & IEmitter<ViewEvents> & HasListeners<ViewEvents>;
@@ -726,24 +723,6 @@ export class MockRepairDataStore<TChange> implements RepairDataStore<TChange> {
 }
 
 export const mockIntoDelta = (delta: Delta.Root) => delta;
-
-export class MockRepairDataStoreProvider<TChange> implements IRepairDataStoreProvider<TChange> {
-	public freeze(): void {
-		// Noop
-	}
-
-	public applyChange(change: TChange): void {
-		// Noop
-	}
-
-	public createRepairData(): MockRepairDataStore<TChange> {
-		return new MockRepairDataStore();
-	}
-
-	public clone(): IRepairDataStoreProvider<TChange> {
-		return new MockRepairDataStoreProvider();
-	}
-}
 
 export function createMockUndoRedoManager(): UndoRedoManager<DefaultChangeset, DefaultEditBuilder> {
 	return UndoRedoManager.create(new DefaultChangeFamily({ jsonValidator: typeboxValidator }));

@@ -4,7 +4,6 @@
  */
 
 import { Invariant } from "../../util";
-import { ReadonlyRepairDataStore } from "../repair";
 import { AnchorSet } from "../tree";
 import type { RevisionTag } from "./types";
 
@@ -62,12 +61,7 @@ export interface ChangeRebaser<TChangeset> {
 	 * `compose([changes, inverse(changes)])` be equal to `compose([])`:
 	 * See {@link ChangeRebaser} for details.
 	 */
-	invert(
-		changes: TaggedChange<TChangeset>,
-		isRollback: boolean,
-		// TODO: make the repair store mandatory when all usages of this method have repair data support.
-		repairStore?: ReadonlyRepairDataStore,
-	): TChangeset;
+	invert(changes: TaggedChange<TChangeset>, isRollback: boolean): TChangeset;
 
 	/**
 	 * Rebase `change` over `over`.

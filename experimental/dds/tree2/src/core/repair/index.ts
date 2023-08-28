@@ -4,4 +4,3 @@
  */
 
 export { RepairDataStore, ReadonlyRepairDataStore } from "./repairDataStore";
-export { IRepairDataStoreProvider } from "./repairDataStoreProvider";
