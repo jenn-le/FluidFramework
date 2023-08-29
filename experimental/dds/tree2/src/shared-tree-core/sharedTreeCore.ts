@@ -130,7 +130,6 @@ export class SharedTreeCore<TEditor extends ChangeFamilyEditor, TChange> extends
 	 * @param summarizables - Summarizers for all indexes used by this tree
 	 * @param changeFamily - The change family
 	 * @param editManager - The edit manager
-	 * @param anchors - The anchor set
 	 * @param id - The id of the shared object
 	 * @param runtime - The IFluidDataStoreRuntime which contains the shared object
 	 * @param attributes - Attributes of the shared object
@@ -139,7 +138,6 @@ export class SharedTreeCore<TEditor extends ChangeFamilyEditor, TChange> extends
 	public constructor(
 		summarizables: readonly Summarizable[],
 		private readonly changeFamily: ChangeFamily<TEditor, TChange>,
-		anchors: AnchorSet,
 		options: ICodecOptions,
 		// Base class arguments
 		id: string,
@@ -156,7 +154,7 @@ export class SharedTreeCore<TEditor extends ChangeFamilyEditor, TChange> extends
 		 */
 		// TODO: Change this type to be the Session ID type provided by the IdCompressor when available.
 		const localSessionId = generateStableId();
-		this.editManager = new EditManager(changeFamily, localSessionId, anchors);
+		this.editManager = new EditManager(changeFamily, localSessionId);
 		this.editManager.on("newTrunkHead", (head) => {
 			this.changeEvents.emit("newSequencedChange", head.change);
 		});

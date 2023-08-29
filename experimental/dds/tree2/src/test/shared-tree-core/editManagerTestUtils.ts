@@ -11,7 +11,6 @@ import {
 	mintRevisionTag,
 } from "../../core";
 import {
-	TestAnchorSet,
 	TestChangeFamily,
 	TestChange,
 	testChangeFamilyFactory,
@@ -27,17 +26,15 @@ export function editManagerFactory(options: {
 	sessionId?: SessionId;
 }): {
 	manager: TestEditManager;
-	anchors: TestAnchorSet;
 	family: ChangeFamily<ChangeFamilyEditor, TestChange>;
 } {
 	const family = testChangeFamilyFactory(options.rebaser);
-	const anchors = new TestAnchorSet();
 	const manager = new EditManager<
 		ChangeFamilyEditor,
 		TestChange,
 		ChangeFamily<ChangeFamilyEditor, TestChange>
-	>(family, options.sessionId ?? "0", anchors);
-	return { manager, anchors, family };
+	>(family, options.sessionId ?? "0");
+	return { manager, family };
 }
 
 export function rebaseLocalEditsOverTrunkEdits(

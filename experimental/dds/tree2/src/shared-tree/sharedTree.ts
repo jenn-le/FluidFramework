@@ -93,7 +93,6 @@ export class SharedTree
 		super(
 			[schemaSummarizer, forestSummarizer],
 			changeFamily,
-			forest.anchors,
 			options,
 			id,
 			runtime,

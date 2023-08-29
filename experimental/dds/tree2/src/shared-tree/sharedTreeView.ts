@@ -309,7 +309,6 @@ export function createSharedTreeView(args?: {
 			},
 			changeFamily,
 			undoRedoManager,
-			forest.anchors,
 		);
 	const nodeKeyManager = args?.nodeKeyManager ?? createNodeKeyManager();
 	const context = getEditableTreeContext(
@@ -582,7 +581,7 @@ export class SharedTreeView implements ISharedTreeBranchView {
 		const anchors = new AnchorSet();
 		const storedSchema = this.storedSchema.clone();
 		const forest = this.forest.clone(storedSchema, anchors);
-		const branch = this.branch.fork(anchors);
+		const branch = this.branch.fork();
 		const context = getEditableTreeContext(
 			forest,
 			branch.editor,
