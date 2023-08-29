@@ -50,7 +50,10 @@ import {
 	initializeContent,
 	schematize,
 } from "./schematizedTree";
-import { removeAgnosticVisitFromRemoveAwareVisit } from "./removedNodesManagement";
+import {
+	removeAsDeleteVisitFromRemoveAwareVisit,
+	removeAsMoveVisitFromRemoveAwareVisit,
+} from "./removedNodesManagement";
 
 /**
  * Events for {@link ISharedTreeView}.
@@ -427,17 +430,20 @@ export class SharedTreeView implements ISharedTreeBranchView {
 			if (change !== undefined) {
 				const delta = this.changeFamily.intoDelta(change);
 				const idAllocator = idAllocatorFromMaxId(change.maxId);
-				const visit = removeAgnosticVisitFromRemoveAwareVisit(
+				const visitAsMove = removeAsMoveVisitFromRemoveAwareVisit(
 					this.repairDataIndex,
 					this.removedRootAllocator,
 					idAllocator,
 				);
+				// const visitAsDelete = removeAsDeleteVisitFromRemoveAwareVisit(
+				// );
 				// OTHER TODO'S:
 				// Optional field test to verify the nodeId is set on Delta.Delete
 				// Forest test suite should check that the passed in visit function is used instead of visitDelta
 				// SharedTreeView test to make sure that deleting content in optional and sequence fields leads to the creation of repair data in the forest
 				// change family's intoDelta needs to take a TaggedChange<TChangeset> -> same for FieldKind -> needs to be passed down to
-				this.forest.applyDelta(delta, visit);
+				this.forest.applyDelta(delta, visitAsMove);
+				// this.forest.anchors.applyDelta(delta, visitAsDelete);
 				this.nodeKeyIndex.scanKeys(this.context);
 				this.events.emit("afterBatch");
 			}
