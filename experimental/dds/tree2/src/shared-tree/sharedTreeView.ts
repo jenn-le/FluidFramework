@@ -16,12 +16,7 @@ import {
 	assertIsRevisionTag,
 	UndoRedoManager,
 	LocalCommitSource,
-	visitDelta,
-	Delta,
 	schemaDataIsEmpty,
-	DeltaVisitor,
-	FieldKey,
-	RemoveAgnosticVisitor,
 } from "../core";
 import { HasListeners, IEmitter, ISubscribable, createEmitter } from "../events";
 import {
@@ -55,6 +50,7 @@ import {
 	initializeContent,
 	schematize,
 } from "./schematizedTree";
+import { removeAgnosticVisitFromRemoveAwareVisit } from "./removedNodesManagement";
 
 /**
  * Events for {@link ISharedTreeView}.
@@ -430,108 +426,18 @@ export class SharedTreeView implements ISharedTreeBranchView {
 		branch.on("change", ({ change }) => {
 			if (change !== undefined) {
 				const delta = this.changeFamily.intoDelta(change);
-				const visit = (d: Delta.Root, visitor: RemoveAgnosticVisitor) => {
-					const rootVisitor = visitor.fork();
-					const removedContentVisitor = visitor.fork();
-					let modificationVisitor = visitor;
-					const idAllocator = idAllocatorFromMaxId(change.maxId);
-					const wrappedVisitor: DeltaVisitor = {
-						enterNode: (index: number): void => {
-							modificationVisitor.enterNode(index);
-						},
-						exitNode: (index: number): void => {
-							modificationVisitor.exitNode(index);
-						},
-						enterField: (key: FieldKey): void => {
-							modificationVisitor.enterField(key);
-						},
-						exitField: (key: FieldKey): void => {
-							modificationVisitor.exitField(key);
-						},
-						onDelete: (index: number, count: number) => {
-							modificationVisitor.onDelete(index, count);
-						},
-						onInsert: (index: number, content: Delta.ProtoNodes) => {
-							modificationVisitor.onInsert(index, content);
-						},
-						onMoveOut: (index: number, count: number, id: Delta.MoveId) => {
-							modificationVisitor.onMoveOut(index, count, id);
-						},
-						onMoveIn: (index: number, count: number, id: Delta.MoveId) => {
-							modificationVisitor.onMoveIn(index, count, id);
-						},
-						onRemove: (index: number, count: number, nodeId: Delta.RemovedNodeId) => {
-							// TODO: update the RemoveFreeDeltaVisitor contract to support batch-detaching contiguous nodes
-							// into individual roots.
-							let moveId: Delta.MoveId = brand(idAllocator(count));
-							for (let iNode = 0; iNode < count; iNode += 1) {
-								const fieldKey = this.repairDataIndex.createEntry(
-									{ ...nodeId, minor: nodeId.minor + iNode },
-									brand(this.repairDataCounter++),
-								);
-								// We need to create new IDs to represent the combination of the RemovedNodeId
-								// major and minor.
-								visitor.onMoveOut(index, 1, moveId);
-								rootVisitor.enterField(fieldKey);
-								rootVisitor.onMoveIn(0, 1, moveId);
-								rootVisitor.exitField(fieldKey);
-								moveId = brand((moveId as unknown as number) + 1);
-							}
-						},
-						enterRemovedNode: (nodeId: Delta.RemovedNodeId) => {
-							const fieldKey = this.repairDataIndex.getFieldKey(nodeId);
-							removedContentVisitor.enterField(fieldKey);
-							removedContentVisitor.enterNode(0);
-							modificationVisitor = removedContentVisitor;
-						},
-						exitRemovedNode: (nodeId: Delta.RemovedNodeId) => {
-							const fieldKey = this.repairDataIndex.getFieldKey(nodeId);
-							removedContentVisitor.exitNode(0);
-							removedContentVisitor.exitField(fieldKey);
-							modificationVisitor = visitor;
-						},
-						onRestore: (index: number, count: number, nodeId: Delta.RemovedNodeId) => {
-							let moveId: Delta.MoveId = brand(idAllocator(count));
-							for (let iNode = 0; iNode < count; iNode += 1) {
-								const fieldKey = this.repairDataIndex.getFieldKey({
-									...nodeId,
-									minor: nodeId.minor + iNode,
-								});
-								rootVisitor.enterField(fieldKey);
-								rootVisitor.onMoveOut(0, 1, moveId);
-								rootVisitor.exitField(fieldKey);
-								visitor.onMoveIn(index, 1, moveId);
-								moveId = brand((moveId as unknown as number) + 1);
-							}
-						},
-						onMoveOutRemovedNodes: (
-							nodeId: Delta.RemovedNodeId,
-							count: number,
-							id: Delta.MoveId,
-						) => {
-							let moveId: Delta.MoveId = id;
-							for (let iNode = 0; iNode < count; iNode += 1) {
-								const fieldKey = this.repairDataIndex.getFieldKey({
-									...nodeId,
-									minor: nodeId.minor + iNode,
-								});
-								rootVisitor.enterField(fieldKey);
-								rootVisitor.onMoveOut(0, 1, moveId);
-								rootVisitor.exitField(fieldKey);
-								moveId = brand((moveId as unknown as number) + 1);
-							}
-						},
-					};
-					visitDelta(d, wrappedVisitor);
-					rootVisitor.free();
-					removedContentVisitor.free();
-				};
+				const idAllocator = idAllocatorFromMaxId(change.maxId);
+				const visit = removeAgnosticVisitFromRemoveAwareVisit(
+					this.repairDataIndex,
+					this.removedRootAllocator,
+					idAllocator,
+				);
 				// OTHER TODO'S:
 				// Optional field test to verify the nodeId is set on Delta.Delete
 				// Forest test suite should check that the passed in visit function is used instead of visitDelta
 				// SharedTreeView test to make sure that deleting content in optional and sequence fields leads to the creation of repair data in the forest
 				// change family's intoDelta needs to take a TaggedChange<TChangeset> -> same for FieldKind -> needs to be passed down to
-				void this.forest.applyDelta(delta, visit);
+				this.forest.applyDelta(delta, visit);
 				this.nodeKeyIndex.scanKeys(this.context);
 				this.events.emit("afterBatch");
 			}
@@ -542,7 +448,7 @@ export class SharedTreeView implements ISharedTreeBranchView {
 	}
 
 	private readonly repairDataIndex = new TreeIndex("repairData");
-	private repairDataCounter = 0;
+	private readonly removedRootAllocator = idAllocatorFromMaxId();
 
 	public get rootEvents(): ISubscribable<AnchorSetRootEvents> {
 		return this.forest.anchors;
