@@ -1192,3 +1192,32 @@ export function getView<TSchema extends ImplicitFieldSchema>(
 		brand(defaultNodeKeyFieldKey),
 	);
 }
+
+/**
+ * Allows objects to be collected to test that they don't leak after being disposed.
+ *
+ * @remarks
+ * Note that tests using this this are at high risk of being flakey as they are optimization dependent.
+ */
+export class GCChecker {
+	private readonly weakRefs: WeakRef<any>[] = [];
+
+	public addObject(object: any) {
+		this.weakRefs.push(new WeakRef(object));
+	}
+
+	public gcAndVerify() {
+		assert(
+			global.gc !== undefined,
+			"garbage collection unavailable, pass --expose-gc when launching node to enable forced garbage collection",
+		);
+
+		// gc a couple times for good measure
+		global.gc();
+		global.gc();
+
+		this.weakRefs.forEach((ref) => {
+			assert.equal(ref.deref(), undefined, "object has not been gc-ed");
+		});
+	}
+}
