@@ -1202,7 +1202,7 @@ export function getView<TSchema extends ImplicitFieldSchema>(
 export class GCChecker {
 	private readonly weakRefs: WeakRef<any>[] = [];
 
-	public addObject(object: any) {
+	public addObject(object: object) {
 		this.weakRefs.push(new WeakRef(object));
 	}
 
