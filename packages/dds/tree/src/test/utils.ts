@@ -142,7 +142,7 @@ import {
 } from "../shared-tree/schematizingTreeView.js";
 // eslint-disable-next-line import/no-internal-modules
 import type { SharedTreeOptions } from "../shared-tree/sharedTree.js";
-import type { ImplicitFieldSchema, TreeViewConfiguration } from "../simple-tree/index.js";
+import { SchemaFactory, type ImplicitFieldSchema, type TreeViewConfiguration } from "../simple-tree/index.js";
 import {
 	type JsonCompatible,
 	type Mutable,
@@ -775,20 +775,18 @@ export function flexTreeWithContent<TRoot extends FlexFieldSchema>(
 	return view.flexTree;
 }
 
-export const jsonSequenceRootSchema = new SchemaBuilderBase(FieldKinds.sequence, {
+const schemaFactory = new SchemaFactory(undefined);
+
+export const jsonSequenceRootSchema = schemaFactory.array(schemaFactory.object());
+
+new SchemaBuilderBase(FieldKinds.sequence, {
 	scope: "JsonSequenceRoot",
 	libraries: [jsonSchema],
 }).intoSchema(jsonRoot);
 
-export const stringSequenceRootSchema = new SchemaBuilderBase(FieldKinds.sequence, {
-	libraries: [leaf.library],
-	scope: "StringSequenceRoot",
-}).intoSchema(leaf.string);
+export const stringSequenceRootSchema = schemaFactory.array(schemaFactory.string);
 
-export const numberSequenceRootSchema = new SchemaBuilderBase(FieldKinds.sequence, {
-	libraries: [leaf.library],
-	scope: "NumberSequenceRoot",
-}).intoSchema(leaf.number);
+export const numberSequenceRootSchema = schemaFactory.array(schemaFactory.number);
 
 export const emptyJsonSequenceConfig = {
 	schema: jsonSequenceRootSchema,
